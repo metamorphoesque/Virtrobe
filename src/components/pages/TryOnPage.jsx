@@ -77,25 +77,111 @@ const TryOnPage = ({ onSave, userGender }) => {
         </div>
       )}
       
-      {/* LEFT PANEL - 3D Viewport */}
-      <div className="flex-1 relative bg-gray-50">
-        <Scene
-          measurements={measurements}
-          garmentType={selectedGarment}
-          garmentColor={garmentColor}
-          showMeasurements={false}
-          showGarment={true}
-          autoRotate={true}
-        />
+      {/* LEFT PANEL - 3D Viewport + Similar Looks */}
+      <div className="flex-1 flex flex-col">
         
-        {/* Viewport Label */}
-        <div className="absolute top-6 left-6 bg-white px-4 py-2 rounded-full shadow-md border border-gray-200">
-          <span className="text-xs font-semibold text-black tracking-wide">3D PREVIEW</span>
+        {/* 3D Viewport - Vertically Taller */}
+        <div className="flex-1 relative bg-gray-50 min-h-[70vh]">
+          <Scene
+            measurements={measurements}
+            garmentType={selectedGarment}
+            garmentColor={garmentColor}
+            showMeasurements={false}
+            showGarment={true}
+            autoRotate={true}
+          />
+          
+          {/* Viewport Label */}
+          <div className="absolute top-6 left-6 bg-white px-4 py-2 rounded-full shadow-md border border-gray-200">
+            <span className="text-xs font-semibold text-black tracking-wide">3D PREVIEW</span>
+          </div>
         </div>
+        
+        {/* Similar Looks Section */}
+        <div className="bg-white border-t border-gray-200 p-6">
+          <h3 className="text-sm font-medium text-black mb-4">Similar Looks</h3>
+          <div className="grid grid-cols-4 gap-4">
+            
+            {/* Card 1 */}
+            <div className="group cursor-pointer">
+              <div className="aspect-[3/4] bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg mb-2 overflow-hidden border border-gray-200 hover:border-black transition-all duration-300">
+                <div className="w-full h-full flex items-center justify-center">
+                  {/* 3D Model Placeholder */}
+                  <div className="flex flex-col items-center opacity-40 group-hover:opacity-60 transition-opacity">
+                    <div className="w-6 h-6 rounded-full bg-black/10 mb-1" />
+                    <div className="w-8 h-12 bg-black/10 rounded-lg mb-1" />
+                    <div className="flex gap-1">
+                      <div className="w-3 h-8 bg-black/10 rounded-lg" />
+                      <div className="w-3 h-8 bg-black/10 rounded-lg" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-gray-600 font-medium">Casual Shirt</p>
+              <p className="text-xs text-gray-400">Similar fit</p>
+            </div>
+            
+            {/* Card 2 */}
+            <div className="group cursor-pointer">
+              <div className="aspect-[3/4] bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg mb-2 overflow-hidden border border-gray-200 hover:border-black transition-all duration-300">
+                <div className="w-full h-full flex items-center justify-center">
+                  <div className="flex flex-col items-center opacity-40 group-hover:opacity-60 transition-opacity">
+                    <div className="w-6 h-6 rounded-full bg-black/10 mb-1" />
+                    <div className="w-8 h-12 bg-black/10 rounded-lg mb-1" />
+                    <div className="flex gap-1">
+                      <div className="w-3 h-8 bg-black/10 rounded-lg" />
+                      <div className="w-3 h-8 bg-black/10 rounded-lg" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-gray-600 font-medium">Fitted Blazer</p>
+              <p className="text-xs text-gray-400">Similar style</p>
+            </div>
+            
+            {/* Card 3 */}
+            <div className="group cursor-pointer">
+              <div className="aspect-[3/4] bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg mb-2 overflow-hidden border border-gray-200 hover:border-black transition-all duration-300">
+                <div className="w-full h-full flex items-center justify-center">
+                  <div className="flex flex-col items-center opacity-40 group-hover:opacity-60 transition-opacity">
+                    <div className="w-6 h-6 rounded-full bg-black/10 mb-1" />
+                    <div className="w-8 h-12 bg-black/10 rounded-lg mb-1" />
+                    <div className="flex gap-1">
+                      <div className="w-3 h-8 bg-black/10 rounded-lg" />
+                      <div className="w-3 h-8 bg-black/10 rounded-lg" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-gray-600 font-medium">Summer Dress</p>
+              <p className="text-xs text-gray-400">Your measurements</p>
+            </div>
+            
+            {/* Card 4 */}
+            <div className="group cursor-pointer">
+              <div className="aspect-[3/4] bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg mb-2 overflow-hidden border border-gray-200 hover:border-black transition-all duration-300">
+                <div className="w-full h-full flex items-center justify-center">
+                  <div className="flex flex-col items-center opacity-40 group-hover:opacity-60 transition-opacity">
+                    <div className="w-6 h-6 rounded-full bg-black/10 mb-1" />
+                    <div className="w-8 h-12 bg-black/10 rounded-lg mb-1" />
+                    <div className="flex gap-1">
+                      <div className="w-3 h-8 bg-black/10 rounded-lg" />
+                      <div className="w-3 h-8 bg-black/10 rounded-lg" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-gray-600 font-medium">Knit Sweater</p>
+              <p className="text-xs text-gray-400">Recommended</p>
+            </div>
+            
+          </div>
+        </div>
+        
       </div>
       
-      {/* RIGHT PANEL - Minimalist Controls */}
-      <div className="w-96 bg-white border-l border-gray-200 overflow-y-auto p-8">
+      {/* RIGHT PANEL - Minimalist Controls (Non-scrollable) */}
+      <div className="w-96 bg-white border-l border-gray-200 flex flex-col p-8">
         
         {/* Header */}
         <div className="mb-8">
@@ -127,7 +213,7 @@ const TryOnPage = ({ onSave, userGender }) => {
             onChange={(e) => updateHeight(Number(e.target.value))}
             className="w-full h-1 bg-gray-200 rounded-full appearance-none cursor-pointer slider-black"
           />
-          <div className="flex justify-between text-xs text-gray-400 mt-1">
+          <div className="flex justify-between text-xs text-gray-400 mt-2">
             <span>140cm</span>
             <span>200cm</span>
           </div>
@@ -157,7 +243,7 @@ const TryOnPage = ({ onSave, userGender }) => {
             onChange={(e) => updateWeight(Number(e.target.value))}
             className="w-full h-1 bg-gray-200 rounded-full appearance-none cursor-pointer slider-black"
           />
-          <div className="flex justify-between text-xs text-gray-400 mt-1">
+          <div className="flex justify-between text-xs text-gray-400 mt-2">
             <span>40kg</span>
             <span>120kg</span>
           </div>
@@ -166,8 +252,8 @@ const TryOnPage = ({ onSave, userGender }) => {
         {/* DIVIDER */}
         <div className="border-t border-gray-200 my-8"></div>
         
-        {/* BODY PROFILE GRID */}
-        <div className="mb-8">
+        {/* BODY PROFILE - Two Columns */}
+        <div className="mb-8 flex-1">
           <h3 className="text-sm font-medium text-black mb-4">Body Profile</h3>
           <div className="grid grid-cols-2 gap-3">
             
@@ -235,11 +321,8 @@ const TryOnPage = ({ onSave, userGender }) => {
           </div>
         </div>
         
-        {/* DIVIDER */}
-        <div className="border-t border-gray-200 my-8"></div>
-        
         {/* ACTION BUTTONS */}
-        <div className="space-y-3">
+        <div className="space-y-3 mt-auto">
           
           <button
             onClick={handleSaveToMoodboard}
@@ -254,16 +337,9 @@ const TryOnPage = ({ onSave, userGender }) => {
             className="w-full py-3 px-4 bg-white text-black rounded-full font-medium text-sm hover:bg-gray-50 transition-all duration-300 flex items-center justify-center gap-2 border border-gray-300 hover:border-black"
           >
             <Share2 className="w-4 h-4" />
-            Share with Virtrobe
+            Post on Virtrobe
           </button>
           
-        </div>
-        
-        {/* INFO NOTE */}
-        <div className="mt-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
-          <p className="text-xs text-gray-600 leading-relaxed">
-            <span className="font-semibold text-black">Note:</span> Measurements are calculated based on height and weight using standard body proportions. For more accurate fitting, consider manual measurements.
-          </p>
         </div>
         
       </div>
