@@ -1,0 +1,582 @@
+/* TryOnPage.css - Virtual Fitting Room */
+
+.tryon-page {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  background: #ebe4d1;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Notification */
+.tryon-page__notification {
+  position: fixed;
+  top: 6rem;
+  right: 1.5rem;
+  z-index: 50;
+  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+  color: white;
+  padding: 1rem 1.5rem;
+  border-radius: 9999px;
+  box-shadow: 0 10px 40px rgba(22, 163, 74, 0.4);
+  animation: slideInRight 0.5s ease-out;
+}
+
+.tryon-page__notification-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tryon-page__notification-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.tryon-page__notification-text {
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+}
+
+/* Left Panel - Controls */
+.tryon-page__controls {
+  width: 24rem;
+  background: linear-gradient(to bottom, #faf8f3 0%, #ebe4d1 100%);
+  box-shadow: 10px 0 40px rgba(62, 39, 35, 0.15);
+  padding: 2rem 1.5rem;
+  overflow-y: auto;
+  border-right: 2px solid rgba(201, 188, 176, 0.3);
+}
+
+.tryon-page__controls::-webkit-scrollbar {
+  width: 8px;
+}
+
+.tryon-page__controls::-webkit-scrollbar-track {
+  background: #f5f1e8;
+}
+
+.tryon-page__controls::-webkit-scrollbar-thumb {
+  background: #c9bcb0;
+  border-radius: 4px;
+}
+
+.tryon-page__controls::-webkit-scrollbar-thumb:hover {
+  background: #8b7f72;
+}
+
+.tryon-page__title {
+  font-family: 'Playfair Display', serif;
+  font-size: 2rem;
+  font-weight: 600;
+  color: #3e2723;
+  margin-bottom: 2rem;
+  letter-spacing: -0.02em;
+}
+
+/* Model Toggle */
+.tryon-page__model-toggle {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: white;
+  border-radius: 2rem;
+  border: 1px solid rgba(201, 188, 176, 0.3);
+  box-shadow: 0 2px 15px rgba(62, 39, 35, 0.06);
+}
+
+.tryon-page__model-toggle-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tryon-page__model-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tryon-page__model-toggle-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  color: #5d4037;
+}
+
+.tryon-page__model-toggle-text {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #3e2723;
+}
+
+.tryon-page__model-toggle-button {
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.tryon-page__model-toggle-button--active {
+  background: #3e2723;
+  color: #faf8f3;
+}
+
+.tryon-page__model-toggle-button--inactive {
+  background: rgba(201, 188, 176, 0.3);
+  color: #5d4037;
+}
+
+.tryon-page__model-toggle-note {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.75rem;
+  color: #8b7f72;
+  margin-top: 0.5rem;
+  font-style: italic;
+}
+
+/* Measurement Section */
+.tryon-page__section {
+  margin-bottom: 1.5rem;
+}
+
+.tryon-page__card {
+  background: white;
+  border-radius: 2rem;
+  padding: 1.5rem;
+  box-shadow: 0 4px 30px rgba(62, 39, 35, 0.08);
+  border: 2px solid rgba(201, 188, 176, 0.2);
+}
+
+.tryon-page__card-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #3e2723;
+  margin-bottom: 1.25rem;
+}
+
+.tryon-page__measurement-group {
+  margin-bottom: 1.5rem;
+}
+
+.tryon-page__measurement-group:last-child {
+  margin-bottom: 0;
+}
+
+.tryon-page__measurement-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.tryon-page__measurement-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #3e2723;
+}
+
+.tryon-page__measurement-value {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #5d4037;
+}
+
+.tryon-page__slider {
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.tryon-page__slider-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.25rem;
+}
+
+.tryon-page__slider-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.75rem;
+  color: #8b7f72;
+}
+
+/* Body Profile Grid */
+.tryon-page__profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.75rem;
+}
+
+.tryon-page__profile-item {
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 1rem;
+  padding: 0.75rem;
+}
+
+.tryon-page__profile-label {
+  color: #8b7f72;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  text-transform: capitalize;
+}
+
+.tryon-page__profile-value {
+  font-family: 'Playfair Display', serif;
+  font-weight: 600;
+  color: #3e2723;
+  text-transform: capitalize;
+}
+
+/* Color Picker */
+.tryon-page__color-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.tryon-page__color-button {
+  height: 3rem;
+  border-radius: 1rem;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.tryon-page__color-button:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 20px rgba(62, 39, 35, 0.2);
+}
+
+.tryon-page__color-button--selected {
+  border-color: #3e2723;
+  transform: scale(1.1);
+  box-shadow: 0 6px 25px rgba(62, 39, 35, 0.3);
+}
+
+.tryon-page__color-indicator {
+  width: 0.75rem;
+  height: 0.75rem;
+  background: white;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* Select Dropdown */
+.tryon-page__select {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 2px solid rgba(201, 188, 176, 0.3);
+  border-radius: 9999px;
+  background: #faf8f3;
+  color: #3e2723;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.tryon-page__select:focus {
+  outline: none;
+  border-color: #3e2723;
+  box-shadow: 0 0 0 4px rgba(62, 39, 35, 0.1);
+}
+
+/* Fit Analysis */
+.tryon-page__fit-analysis {
+  padding: 1rem;
+  background: linear-gradient(to bottom right, #faf8f3 0%, #ebe4d1 100%);
+  border-radius: 1.5rem;
+  border: 1px solid rgba(201, 188, 176, 0.3);
+  margin-top: 1rem;
+}
+
+.tryon-page__fit-title {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #3e2723;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.75rem;
+}
+
+.tryon-page__fit-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tryon-page__fit-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  background: white;
+  border-radius: 0.75rem;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.75rem;
+}
+
+.tryon-page__fit-label {
+  font-weight: 600;
+  color: #8b7f72;
+}
+
+.tryon-page__fit-value {
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.tryon-page__fit-value--good {
+  color: #16a34a;
+}
+
+.tryon-page__fit-value--medium {
+  color: #d97706;
+}
+
+.tryon-page__fit-value--poor {
+  color: #dc2626;
+}
+
+/* Action Buttons */
+.tryon-page__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.tryon-page__button {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border-radius: 9999px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 0.875rem;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tryon-page__button--primary {
+  background: #3e2723;
+  color: #faf8f3;
+  box-shadow: 0 4px 20px rgba(62, 39, 35, 0.2);
+}
+
+.tryon-page__button--primary:hover {
+  background: #5d4037;
+  box-shadow: 0 6px 25px rgba(62, 39, 35, 0.3);
+  transform: translateY(-2px);
+}
+
+.tryon-page__button--secondary {
+  background: rgba(201, 188, 176, 0.3);
+  color: #3e2723;
+}
+
+.tryon-page__button--secondary:hover {
+  background: rgba(201, 188, 176, 0.5);
+}
+
+.tryon-page__button--active {
+  background: #3e2723;
+  color: #faf8f3;
+  box-shadow: 0 4px 20px rgba(62, 39, 35, 0.2);
+  transform: scale(1.02);
+}
+
+.tryon-page__button--save {
+  background: linear-gradient(135deg, #5d4037 0%, #3e2723 100%);
+  color: #faf8f3;
+  padding: 1.25rem;
+  font-size: 1rem;
+  font-weight: 700;
+  box-shadow: 0 6px 30px rgba(62, 39, 35, 0.25);
+}
+
+.tryon-page__button--save:hover {
+  box-shadow: 0 8px 40px rgba(62, 39, 35, 0.3);
+  transform: translateY(-3px);
+}
+
+.tryon-page__button-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+/* Right Panel - 3D Viewer */
+.tryon-page__viewer {
+  flex: 1;
+  position: relative;
+  background: linear-gradient(135deg, #f5f1e8 0%, #ebe4d1 100%);
+}
+
+/* Overlays */
+.tryon-page__overlay {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  border-radius: 2rem;
+  padding: 1.5rem;
+  box-shadow: 0 8px 40px rgba(62, 39, 35, 0.15);
+  border: 2px solid rgba(201, 188, 176, 0.3);
+}
+
+.tryon-page__overlay--top-right {
+  top: 1.5rem;
+  right: 1.5rem;
+  max-width: 20rem;
+}
+
+.tryon-page__overlay--bottom-left {
+  bottom: 1.5rem;
+  left: 1.5rem;
+}
+
+.tryon-page__overlay-title {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #3e2723;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.75rem;
+}
+
+.tryon-page__overlay-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.tryon-page__overlay-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.75rem;
+  color: #5d4037;
+  line-height: 1.5;
+}
+
+.tryon-page__overlay-bullet {
+  color: #c9a86a;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* Fit Quality Badge */
+.tryon-page__quality-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+}
+
+.tryon-page__quality-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #3e2723;
+}
+
+.tryon-page__quality-value {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tryon-page__quality-rating {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.tryon-page__quality-rating--excellent {
+  color: #16a34a;
+}
+
+.tryon-page__quality-rating--good {
+  color: #d97706;
+}
+
+.tryon-page__quality-rating--fair {
+  color: #ea580c;
+}
+
+.tryon-page__quality-score {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.875rem;
+  color: #8b7f72;
+}
+
+/* Animations */
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(100px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .tryon-page__controls {
+    width: 20rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .tryon-page {
+    flex-direction: column;
+  }
+
+  .tryon-page__controls {
+    width: 100%;
+    height: 50vh;
+  }
+
+  .tryon-page__viewer {
+    height: 50vh;
+  }
+
+  .tryon-page__overlay--top-right {
+    top: 1rem;
+    right: 1rem;
+    max-width: 15rem;
+    padding: 1rem;
+  }
+
+  .tryon-page__overlay--bottom-left {
+    bottom: 1rem;
+    left: 1rem;
+    padding: 0.75rem 1rem;
+  }
+}

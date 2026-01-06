@@ -1,0 +1,306 @@
+/* Import Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* Tailwind Directives */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   BASE LAYER - Minimalist Foundation
+   ============================================ */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    color: #000000;
+    background-color: #ffffff;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Inter', sans-serif;
+    letter-spacing: -0.02em;
+    font-weight: 300;
+  }
+
+  h1 { font-size: 2.5rem; line-height: 1.2; }
+  h2 { font-size: 2rem; line-height: 1.3; }
+  h3 { font-size: 1.5rem; line-height: 1.3; }
+  h4 { font-size: 1.25rem; line-height: 1.4; }
+
+  p, span, div {
+    font-family: 'Inter', sans-serif;
+    letter-spacing: 0;
+    line-height: 1.6;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  ::selection {
+    background: #000000;
+    color: #ffffff;
+  }
+
+  ::-moz-selection {
+    background: #000000;
+    color: #ffffff;
+  }
+}
+
+/* ============================================
+   COMPONENTS LAYER - Minimal Patterns
+   ============================================ */
+@layer components {
+  /* Custom scrollbar */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #f5f5f5;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #000000;
+    border-radius: 4px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #333333;
+  }
+
+  /* Button effects */
+  .btn-minimal {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .btn-minimal:hover {
+    transform: translateY(-1px);
+  }
+
+  .btn-minimal:active {
+    transform: translateY(0);
+  }
+
+  /* Card effects */
+  .card-minimal {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .card-minimal:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
+  }
+
+  /* Glassmorphism minimal */
+  .glass-minimal {
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+  }
+}
+
+/* ============================================
+   UTILITIES LAYER
+   ============================================ */
+@layer utilities {
+  .focus-minimal:focus-visible {
+    outline: 2px solid #000000;
+    outline-offset: 2px;
+  }
+
+  .text-shadow-minimal {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  }
+
+  /* Animation utilities */
+  .animate-fade-in {
+    animation: fadeIn 0.4s ease-out;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.4s ease-out;
+  }
+
+  .animate-scale-in {
+    animation: scaleIn 0.3s ease-out;
+  }
+}
+
+/* ============================================
+   RANGE INPUT STYLING - Minimal Black & White
+   ============================================ */
+@layer base {
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+    width: 100%;
+  }
+
+  input[type="range"]::-webkit-slider-track {
+    background: #e5e5e5;
+    height: 0.25rem;
+    border-radius: 0.5rem;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    background: #000000;
+    height: 1.25rem;
+    width: 1.25rem;
+    border-radius: 50%;
+    border: 2px solid #ffffff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    cursor: pointer;
+    margin-top: -0.5rem;
+    transition: all 0.2s ease;
+  }
+
+  input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  input[type="range"]::-webkit-slider-thumb:active {
+    transform: scale(0.95);
+  }
+
+  input[type="range"]::-moz-range-track {
+    background: #e5e5e5;
+    height: 0.25rem;
+    border-radius: 0.5rem;
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    background: #000000;
+    height: 1.25rem;
+    width: 1.25rem;
+    border-radius: 50%;
+    border: 2px solid #ffffff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  input[type="range"]::-moz-range-thumb:hover {
+    transform: scale(1.1);
+  }
+}
+
+/* ============================================
+   INPUT & FORM STYLING - Minimal
+   ============================================ */
+@layer base {
+  input[type="text"],
+  input[type="email"],
+  input[type="number"],
+  textarea,
+  select {
+    font-family: 'Inter', sans-serif;
+    font-weight: 300;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: #9ca3af;
+    font-weight: 300;
+  }
+
+  input:focus,
+  textarea:focus,
+  select:focus {
+    outline: none;
+  }
+}
+
+/* ============================================
+   DISABLED STATES
+   ============================================ */
+@layer base {
+  button:disabled,
+  input:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+}
+
+/* ============================================
+   KEYFRAMES
+   ============================================ */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================
+   MINIMAL COLOR PALETTE UTILITIES
+   ============================================ */
+@layer utilities {
+  .bg-primary {
+    background-color: #000000;
+  }
+
+  .bg-secondary {
+    background-color: #f5f5f5;
+  }
+
+  .text-primary {
+    color: #000000;
+  }
+
+  .text-secondary {
+    color: #6b7280;
+  }
+
+  .border-primary {
+    border-color: #000000;
+  }
+
+  .border-secondary {
+    border-color: #e5e7eb;
+  }
+}
