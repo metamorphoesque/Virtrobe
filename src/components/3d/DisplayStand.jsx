@@ -4,7 +4,7 @@ import { useGLTF } from '@react-three/drei';
 
 const DisplayStand = ({
   position = [0, 0, 0],   // Always on floor
-  scale = 0.8              // Adjust stand size here
+  scale = 0.7             // Adjust stand size here
 }) => {
   const standRef = useRef();
   const { scene } = useGLTF('/models/DisplayStand.glb');

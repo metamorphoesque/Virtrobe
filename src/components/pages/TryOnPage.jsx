@@ -1,56 +1,233 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Save, Share2, Camera } from 'lucide-react';
 import Scene from '../3d/Scene';
-import { useBodyMeasurements } from '../../hooks/useBodyMeasurements';
-import { useGarmentFit } from '../../hooks/useGarmentFit';
 
-const TryOnPage = ({ onSave, userGender }) => {
-  const {
-    measurements,
-    height,
-    weight,
-    updateHeight,
-    updateWeight
-  } = useBodyMeasurements(userGender);
+const TryOnPage = ({ onSave, userGender = 'female' }) => {
+  // Core measurements state
+  const [height, setHeight] = useState(170);
+  const [weight, setWeight] = useState(65);
   
-  const {
-    selectedGarment,
-    fitAnalysis,
-    garmentColor,
-    changeGarment,
-    updateColor
-  } = useGarmentFit(measurements);
+  // Detailed measurements state (user can override these)
+  const [bust, setBust] = useState(90);
+  const [waist, setWaist] = useState(70);
+  const [hips, setHips] = useState(95);
+  const [shoulders, setShoulders] = useState(40);
   
-  // State management
+  // Auto-calculate flag
+  const [autoCalculate, setAutoCalculate] = useState(true);
+  
+  // UI state
   const [showSaveNotification, setShowSaveNotification] = useState(false);
-  const [heightUnit, setHeightUnit] = useState('cm'); // cm or ft
-  const [weightUnit, setWeightUnit] = useState('kg'); // kg or lbs
-  const [selectedClothingType, setSelectedClothingType] = useState('shirt'); // clothing selection
-  const [uploadedImage, setUploadedImage] = useState(null); // uploaded garment image
+  const [heightUnit, setHeightUnit] = useState('cm');
+  const [weightUnit, setWeightUnit] = useState('kg');
+  const [selectedClothingType, setSelectedClothingType] = useState('shirt');
+  const [uploadedImage, setUploadedImage] = useState(null);
+  const [showAdvancedControls, setShowAdvancedControls] = useState(false);
+  
+  // Calculate BMI
+  const calculateBMI = (heightCm, weightKg) => {
+    const heightM = heightCm / 100;
+    return (weightKg / (heightM * heightM)).toFixed(1);
+  };
+  
+  const bmi = calculateBMI(height, weight);
+  
+  // Auto-calculate body measurements based on height, weight, and BMI
+  useEffect(() => {
+    if (!autoCalculate) return;
+    
+    const bmiValue = parseFloat(bmi);
+    
+    // Frame size factor based on height (taller = wider frame)
+    const frameFactor = Math.max(0, Math.min(1, (height - 150) / 50));
+    
+    console.log(' Auto-calculating measurements:', { height, weight, bmi: bmiValue, frameFactor });
+    
+    if (userGender === 'female') {
+      // FEMALE BODY PROPORTIONS
+      
+      // SHOULDERS: 35-45cm range, increases with height
+      const baseShoulders = 38;
+      const shouldersCalc = baseShoulders + (frameFactor * 7);
+      
+      // BUST, WAIST, HIPS based on BMI categories
+      let bustCalc, waistCalc, hipsCalc;
+      
+      if (bmiValue < 18.5) {
+        // UNDERWEIGHT - petite proportions
+        bustCalc = 78 + (frameFactor * 6);
+        waistCalc = 61 + (frameFactor * 5);
+        hipsCalc = 82 + (frameFactor * 6);
+        
+      } else if (bmiValue < 20) {
+        // SLIM - athletic proportions
+        bustCalc = 82 + (frameFactor * 7) + ((bmiValue - 18.5) * 2);
+        waistCalc = 64 + (frameFactor * 6) + ((bmiValue - 18.5) * 1.5);
+        hipsCalc = 86 + (frameFactor * 7) + ((bmiValue - 18.5) * 2);
+        
+      } else if (bmiValue < 23) {
+        // NORMAL (lower range) - balanced proportions
+        bustCalc = 86 + (frameFactor * 8) + ((bmiValue - 20) * 2);
+        waistCalc = 68 + (frameFactor * 7) + ((bmiValue - 20) * 1.5);
+        hipsCalc = 90 + (frameFactor * 8) + ((bmiValue - 20) * 2.5);
+        
+      } else if (bmiValue < 25) {
+        // NORMAL (upper range) - fuller proportions
+        bustCalc = 92 + (frameFactor * 9) + ((bmiValue - 23) * 2);
+        waistCalc = 72 + (frameFactor * 8) + ((bmiValue - 23) * 2);
+        hipsCalc = 97 + (frameFactor * 9) + ((bmiValue - 23) * 2.5);
+        
+      } else if (bmiValue < 27) {
+        // OVERWEIGHT (lower range)
+        bustCalc = 96 + (frameFactor * 10) + ((bmiValue - 25) * 2.5);
+        waistCalc = 77 + (frameFactor * 9) + ((bmiValue - 25) * 3);
+        hipsCalc = 102 + (frameFactor * 10) + ((bmiValue - 25) * 2.5);
+        
+      } else if (bmiValue < 30) {
+        // OVERWEIGHT (upper range)
+        bustCalc = 101 + (frameFactor * 11) + ((bmiValue - 27) * 2.5);
+        waistCalc = 83 + (frameFactor * 10) + ((bmiValue - 27) * 3);
+        hipsCalc = 108 + (frameFactor * 11) + ((bmiValue - 27) * 2.5);
+        
+      } else {
+        // OBESE
+        bustCalc = 108 + (frameFactor * 12) + ((bmiValue - 30) * 2);
+        waistCalc = 92 + (frameFactor * 12) + ((bmiValue - 30) * 3);
+        hipsCalc = 115 + (frameFactor * 13) + ((bmiValue - 30) * 2);
+      }
+      
+      setShoulders(Math.round(shouldersCalc));
+      setBust(Math.round(bustCalc));
+      setWaist(Math.round(waistCalc));
+      setHips(Math.round(hipsCalc));
+      
+      console.log(' Female measurements:', {
+        shoulders: Math.round(shouldersCalc),
+        bust: Math.round(bustCalc),
+        waist: Math.round(waistCalc),
+        hips: Math.round(hipsCalc)
+      });
+      
+    } else {
+      // MALE BODY PROPORTIONS
+      
+      // SHOULDERS: 42-52cm range (broader than female)
+      const baseShoulders = 44;
+      const shouldersCalc = baseShoulders + (frameFactor * 8);
+      
+      let bustCalc, waistCalc, hipsCalc;
+      
+      if (bmiValue < 18.5) {
+        bustCalc = 85 + (frameFactor * 8);
+        waistCalc = 70 + (frameFactor * 7);
+        hipsCalc = 85 + (frameFactor * 6);
+        
+      } else if (bmiValue < 20) {
+        bustCalc = 89 + (frameFactor * 9) + ((bmiValue - 18.5) * 2);
+        waistCalc = 74 + (frameFactor * 8) + ((bmiValue - 18.5) * 1.5);
+        hipsCalc = 88 + (frameFactor * 7) + ((bmiValue - 18.5) * 1.2);
+        
+      } else if (bmiValue < 23) {
+        bustCalc = 93 + (frameFactor * 10) + ((bmiValue - 20) * 2.5);
+        waistCalc = 77 + (frameFactor * 9) + ((bmiValue - 20) * 2);
+        hipsCalc = 91 + (frameFactor * 8) + ((bmiValue - 20) * 1.5);
+        
+      } else if (bmiValue < 25) {
+        bustCalc = 98 + (frameFactor * 11) + ((bmiValue - 23) * 2.5);
+        waistCalc = 81 + (frameFactor * 10) + ((bmiValue - 23) * 2.5);
+        hipsCalc = 94 + (frameFactor * 9) + ((bmiValue - 23) * 1.5);
+        
+      } else if (bmiValue < 27) {
+        bustCalc = 103 + (frameFactor * 12) + ((bmiValue - 25) * 3);
+        waistCalc = 86 + (frameFactor * 11) + ((bmiValue - 25) * 3.5);
+        hipsCalc = 97 + (frameFactor * 10) + ((bmiValue - 25) * 2);
+        
+      } else if (bmiValue < 30) {
+        bustCalc = 109 + (frameFactor * 13) + ((bmiValue - 27) * 3);
+        waistCalc = 93 + (frameFactor * 12) + ((bmiValue - 27) * 4);
+        hipsCalc = 101 + (frameFactor * 11) + ((bmiValue - 27) * 2);
+        
+      } else {
+        bustCalc = 115 + (frameFactor * 14) + ((bmiValue - 30) * 2.5);
+        waistCalc = 105 + (frameFactor * 14) + ((bmiValue - 30) * 4);
+        hipsCalc = 107 + (frameFactor * 12) + ((bmiValue - 30) * 1.8);
+      }
+      
+      setShoulders(Math.round(shouldersCalc));
+      setBust(Math.round(bustCalc));
+      setWaist(Math.round(waistCalc));
+      setHips(Math.round(hipsCalc));
+      
+      console.log(' Male measurements:', {
+        shoulders: Math.round(shouldersCalc),
+        bust: Math.round(bustCalc),
+        waist: Math.round(waistCalc),
+        hips: Math.round(hipsCalc)
+      });
+    }
+    
+  }, [height, weight, bmi, userGender, autoCalculate]);
+  
+  // Build measurements object
+  const measurements = {
+    gender: userGender,
+    height_cm: height,
+    weight_kg: weight,
+    bmi: bmi,
+    bust_cm: bust,
+    waist_cm: waist,
+    hips_cm: hips,
+    shoulder_width_cm: shoulders
+  };
+  
+  // Body type classification
+  const getBodyType = () => {
+    const bustWaistDiff = bust - waist;
+    const hipWaistDiff = hips - waist;
+    const bustHipDiff = Math.abs(bust - hips);
+    
+    // Hourglass: bust and hips similar (within 3cm), both significantly larger than waist
+    if (bustHipDiff <= 3 && bustWaistDiff >= 12 && hipWaistDiff >= 12) {
+      return 'Hourglass';
+    }
+    
+    // Triangle/Top-Heavy: bust significantly larger than hips
+    if (bust > hips + 4 && bustWaistDiff >= 8) {
+      return 'Triangle (Top-Heavy)';
+    }
+    
+    // Pear/Bottom-Heavy: hips significantly larger than bust
+    if (hips > bust + 4 && hipWaistDiff >= 8) {
+      return 'Pear (Bottom-Heavy)';
+    }
+    
+    // Rectangle: minimal curves
+    if (bustWaistDiff < 8 && hipWaistDiff < 8) {
+      return 'Rectangle';
+    }
+    
+    // Athletic: moderate definition
+    return 'Athletic';
+  };
   
   // Unit conversions
-  const heightInCm = height;
   const heightInFt = (height / 30.48).toFixed(1);
-  const weightInKg = weight;
   const weightInLbs = (weight * 2.20462).toFixed(1);
   
   const handleSaveToMoodboard = () => {
-    onSave({
-      id: Date.now(),
-      name: `Try-On ${new Date().toLocaleDateString()}`,
-      date: new Date().toLocaleDateString(),
-      measurements: measurements,
-      garmentType: selectedGarment,
-      color: garmentColor
-    });
+    if (onSave) {
+      onSave({
+        id: Date.now(),
+        name: `Try-On ${new Date().toLocaleDateString()}`,
+        date: new Date().toLocaleDateString(),
+        measurements: measurements,
+        garmentType: selectedClothingType,
+        color: '#000000'
+      });
+    }
     
     setShowSaveNotification(true);
     setTimeout(() => setShowSaveNotification(false), 3000);
-  };
-  
-  const handleShareWithCommunity = () => {
-    // Placeholder for future community sharing feature
-    console.log('Share with Virtrobe community');
   };
   
   const handleImageUpload = (event) => {
@@ -59,88 +236,26 @@ const TryOnPage = ({ onSave, userGender }) => {
       const reader = new FileReader();
       reader.onloadend = () => {
         setUploadedImage(reader.result);
-        console.log('Image uploaded:', file.name);
       };
       reader.readAsDataURL(file);
     }
   };
   
   const clothingTypes = [
-    { 
-      id: 'shirt', 
-      label: 'Shirt', 
-      icon: () => (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-        </svg>
-      )
-    },
-    { 
-      id: 'dress', 
-      label: 'Dress', 
-      icon: () => (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10M12 3v18M16 11l-4-4-4 4M8 7l4 4 4-4" />
-        </svg>
-      )
-    },
-    { 
-      id: 'pants', 
-      label: 'Pants', 
-      icon: () => (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v18M15 3v18M9 3h6M9 21h6M6 3h12" />
-        </svg>
-      )
-    },
-    { 
-      id: 'skirt', 
-      label: 'Skirt', 
-      icon: () => (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v12M6 12l6 6 6-6M8 10h8" />
-        </svg>
-      )
-    },
-    { 
-      id: 'shorts', 
-      label: 'Shorts', 
-      icon: () => (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v9M15 3v9M9 12h6M7 3h10M9 12v3M15 12v3" />
-        </svg>
-      )
-    },
-    { 
-      id: 't-shirt', 
-      label: 'T-Shirt', 
-      icon: () => (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7l3-3h12l3 3v14H3V7zM9 7v14M15 7v14" />
-        </svg>
-      )
-    },
+    { id: 'shirt', label: 'Shirt' },
+    { id: 'dress', label: 'Dress' },
+    { id: 'pants', label: 'Pants' },
+    { id: 'skirt', label: 'Skirt' },
+    { id: 'shorts', label: 'Shorts' },
+    { id: 't-shirt', label: 'T-Shirt' },
   ];
-  
-  // Body type classification logic
-  const getBodyType = () => {
-    const { bust_cm, waist_cm, hips_cm } = measurements;
-    const bustWaistDiff = bust_cm - waist_cm;
-    const hipWaistDiff = hips_cm - waist_cm;
-    
-    if (Math.abs(bust_cm - hips_cm) <= 5 && waist_cm < bust_cm - 10) return 'Hourglass';
-    if (bust_cm > hips_cm + 5) return 'Triangle (Top-Heavy)';
-    if (hips_cm > bust_cm + 5) return 'Pear (Bottom-Heavy)';
-    if (bustWaistDiff < 10 && hipWaistDiff < 10) return 'Rectangle';
-    return 'Athletic';
-  };
   
   return (
     <div className="w-full h-screen flex bg-white">
       
       {/* Save Notification */}
       {showSaveNotification && (
-        <div className="fixed top-24 right-6 z-50 bg-black text-white px-6 py-3 rounded-full shadow-2xl animate-fade-in">
+        <div className="fixed top-24 right-6 z-50 bg-black text-white px-6 py-3 rounded-full shadow-2xl">
           <div className="flex items-center gap-2">
             <Save className="w-4 h-4" />
             <span className="font-medium text-sm">Saved to Moodboard</span>
@@ -148,7 +263,7 @@ const TryOnPage = ({ onSave, userGender }) => {
         </div>
       )}
       
-      {/* LEFT PANEL - Clothing Selection + 3D Viewport (9:16) */}
+      {/* LEFT PANEL - Clothing Selection + 3D Viewport */}
       <div className="flex gap-4 flex-1">
         
         {/* CLOTHING SELECTOR SIDEBAR */}
@@ -185,21 +300,20 @@ const TryOnPage = ({ onSave, userGender }) => {
                   : 'bg-gray-100 hover:bg-gray-200 border-2 border-gray-200 hover:border-black text-gray-700'
               }`}
             >
-              <type.icon />
-              <span className="text-[8px] font-medium mt-1">{type.label}</span>
+              <span className="text-[10px] font-medium">{type.label}</span>
             </button>
           ))}
           
         </div>
         
-        {/* 3D VIEWPORT - Compact Portrait Ratio (3:4) */}
+        {/* 3D VIEWPORT */}
         <div className="flex-1 flex flex-col">
           
           <div className="relative bg-gray-50 w-full max-w-md mx-auto" style={{ aspectRatio: '3/4' }}>
             <Scene
               measurements={measurements}
               garmentType={selectedClothingType}
-              garmentColor={garmentColor}
+              garmentColor="#000000"
               showMeasurements={false}
               showGarment={true}
               autoRotate={true}
@@ -225,82 +339,29 @@ const TryOnPage = ({ onSave, userGender }) => {
             )}
           </div>
           
-          {/* Similar Looks Section - Below 3D Viewport */}
+          {/* Similar Looks Section */}
           <div className="bg-white border-t border-gray-200 p-6">
             <h3 className="text-sm font-medium text-black mb-4">Similar Looks</h3>
             <div className="grid grid-cols-4 gap-4">
               
-              {/* Card 1 */}
-              <div className="group cursor-pointer">
-                <div className="aspect-[3/4] bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg mb-2 overflow-hidden border border-gray-200 hover:border-black transition-all duration-300">
-                  <div className="w-full h-full flex items-center justify-center">
-                    <div className="flex flex-col items-center opacity-40 group-hover:opacity-60 transition-opacity">
-                      <div className="w-6 h-6 rounded-full bg-black/10 mb-1" />
-                      <div className="w-8 h-12 bg-black/10 rounded-lg mb-1" />
-                      <div className="flex gap-1">
-                        <div className="w-3 h-8 bg-black/10 rounded-lg" />
-                        <div className="w-3 h-8 bg-black/10 rounded-lg" />
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="group cursor-pointer">
+                  <div className="aspect-[3/4] bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg mb-2 overflow-hidden border border-gray-200 hover:border-black transition-all duration-300">
+                    <div className="w-full h-full flex items-center justify-center">
+                      <div className="flex flex-col items-center opacity-40 group-hover:opacity-60 transition-opacity">
+                        <div className="w-6 h-6 rounded-full bg-black/10 mb-1" />
+                        <div className="w-8 h-12 bg-black/10 rounded-lg mb-1" />
+                        <div className="flex gap-1">
+                          <div className="w-3 h-8 bg-black/10 rounded-lg" />
+                          <div className="w-3 h-8 bg-black/10 rounded-lg" />
+                        </div>
                       </div>
                     </div>
                   </div>
+                  <p className="text-xs text-gray-600 font-medium">Style {i}</p>
+                  <p className="text-xs text-gray-400">Similar fit</p>
                 </div>
-                <p className="text-xs text-gray-600 font-medium">Casual Shirt</p>
-                <p className="text-xs text-gray-400">Similar fit</p>
-              </div>
-              
-              {/* Card 2 */}
-              <div className="group cursor-pointer">
-                <div className="aspect-[3/4] bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg mb-2 overflow-hidden border border-gray-200 hover:border-black transition-all duration-300">
-                  <div className="w-full h-full flex items-center justify-center">
-                    <div className="flex flex-col items-center opacity-40 group-hover:opacity-60 transition-opacity">
-                      <div className="w-6 h-6 rounded-full bg-black/10 mb-1" />
-                      <div className="w-8 h-12 bg-black/10 rounded-lg mb-1" />
-                      <div className="flex gap-1">
-                        <div className="w-3 h-8 bg-black/10 rounded-lg" />
-                        <div className="w-3 h-8 bg-black/10 rounded-lg" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-600 font-medium">Fitted Blazer</p>
-                <p className="text-xs text-gray-400">Similar style</p>
-              </div>
-              
-              {/* Card 3 */}
-              <div className="group cursor-pointer">
-                <div className="aspect-[3/4] bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg mb-2 overflow-hidden border border-gray-200 hover:border-black transition-all duration-300">
-                  <div className="w-full h-full flex items-center justify-center">
-                    <div className="flex flex-col items-center opacity-40 group-hover:opacity-60 transition-opacity">
-                      <div className="w-6 h-6 rounded-full bg-black/10 mb-1" />
-                      <div className="w-8 h-12 bg-black/10 rounded-lg mb-1" />
-                      <div className="flex gap-1">
-                        <div className="w-3 h-8 bg-black/10 rounded-lg" />
-                        <div className="w-3 h-8 bg-black/10 rounded-lg" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-600 font-medium">Summer Dress</p>
-                <p className="text-xs text-gray-400">Your measurements</p>
-              </div>
-              
-              {/* Card 4 */}
-              <div className="group cursor-pointer">
-                <div className="aspect-[3/4] bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg mb-2 overflow-hidden border border-gray-200 hover:border-black transition-all duration-300">
-                  <div className="w-full h-full flex items-center justify-center">
-                    <div className="flex flex-col items-center opacity-40 group-hover:opacity-60 transition-opacity">
-                      <div className="w-6 h-6 rounded-full bg-black/10 mb-1" />
-                      <div className="w-8 h-12 bg-black/10 rounded-lg mb-1" />
-                      <div className="flex gap-1">
-                        <div className="w-3 h-8 bg-black/10 rounded-lg" />
-                        <div className="w-3 h-8 bg-black/10 rounded-lg" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-600 font-medium">Knit Sweater</p>
-                <p className="text-xs text-gray-400">Recommended</p>
-              </div>
+              ))}
               
             </div>
           </div>
@@ -309,8 +370,8 @@ const TryOnPage = ({ onSave, userGender }) => {
         
       </div>
       
-      {/* RIGHT PANEL - Minimalist Controls (Non-scrollable) */}
-      <div className="w-96 bg-white border-l border-gray-200 flex flex-col p-8">
+      {/* RIGHT PANEL - Controls */}
+      <div className="w-96 bg-white border-l border-gray-200 flex flex-col p-8 overflow-y-auto">
         
         {/* Header */}
         <div className="mb-8">
@@ -324,7 +385,7 @@ const TryOnPage = ({ onSave, userGender }) => {
             <label className="text-sm font-medium text-black">Height</label>
             <div className="flex items-center gap-2">
               <span className="text-lg font-semibold text-black">
-                {heightUnit === 'cm' ? `${heightInCm} cm` : `${heightInFt} ft`}
+                {heightUnit === 'cm' ? `${height} cm` : `${heightInFt} ft`}
               </span>
               <button
                 onClick={() => setHeightUnit(heightUnit === 'cm' ? 'ft' : 'cm')}
@@ -339,8 +400,11 @@ const TryOnPage = ({ onSave, userGender }) => {
             min="140"
             max="200"
             value={height}
-            onChange={(e) => updateHeight(Number(e.target.value))}
-            className="w-full h-1 bg-gray-200 rounded-full appearance-none cursor-pointer slider-black"
+            onChange={(e) => setHeight(Number(e.target.value))}
+            className="w-full h-1 bg-gray-200 rounded-full appearance-none cursor-pointer"
+            style={{
+              background: `linear-gradient(to right, #000 0%, #000 ${((height - 140) / 60) * 100}%, #e5e7eb ${((height - 140) / 60) * 100}%, #e5e7eb 100%)`
+            }}
           />
           <div className="flex justify-between text-xs text-gray-400 mt-2">
             <span>140cm</span>
@@ -354,7 +418,7 @@ const TryOnPage = ({ onSave, userGender }) => {
             <label className="text-sm font-medium text-black">Weight</label>
             <div className="flex items-center gap-2">
               <span className="text-lg font-semibold text-black">
-                {weightUnit === 'kg' ? `${weightInKg} kg` : `${weightInLbs} lbs`}
+                {weightUnit === 'kg' ? `${weight} kg` : `${weightInLbs} lbs`}
               </span>
               <button
                 onClick={() => setWeightUnit(weightUnit === 'kg' ? 'lbs' : 'kg')}
@@ -369,8 +433,11 @@ const TryOnPage = ({ onSave, userGender }) => {
             min="40"
             max="120"
             value={weight}
-            onChange={(e) => updateWeight(Number(e.target.value))}
-            className="w-full h-1 bg-gray-200 rounded-full appearance-none cursor-pointer slider-black"
+            onChange={(e) => setWeight(Number(e.target.value))}
+            className="w-full h-1 bg-gray-200 rounded-full appearance-none cursor-pointer"
+            style={{
+              background: `linear-gradient(to right, #000 0%, #000 ${((weight - 40) / 80) * 100}%, #e5e7eb ${((weight - 40) / 80) * 100}%, #e5e7eb 100%)`
+            }}
           />
           <div className="flex justify-between text-xs text-gray-400 mt-2">
             <span>40kg</span>
@@ -381,8 +448,121 @@ const TryOnPage = ({ onSave, userGender }) => {
         {/* DIVIDER */}
         <div className="border-t border-gray-200 my-8"></div>
         
+        {/* AUTO-CALCULATE TOGGLE */}
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-medium text-black">Detailed Measurements</h3>
+            <p className="text-xs text-gray-500 mt-1">
+              {autoCalculate ? 'Auto-calculated from BMI' : 'Manual control enabled'}
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              setAutoCalculate(!autoCalculate);
+              setShowAdvancedControls(!autoCalculate);
+            }}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+              autoCalculate
+                ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                : 'bg-black text-white'
+            }`}
+          >
+            {autoCalculate ? 'Auto' : 'Manual'}
+          </button>
+        </div>
+        
+        {/* DETAILED MEASUREMENTS - Collapsible */}
+        {showAdvancedControls && (
+          <div className="space-y-6 mb-8">
+            
+            {/* SHOULDERS */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-medium text-black">Shoulders</label>
+                <span className="text-sm font-semibold text-black">{shoulders} cm</span>
+              </div>
+              <input
+                type="range"
+                min="30"
+                max="55"
+                value={shoulders}
+                onChange={(e) => setShoulders(Number(e.target.value))}
+                disabled={autoCalculate}
+                className="w-full h-1 bg-gray-200 rounded-full appearance-none cursor-pointer disabled:opacity-50"
+                style={{
+                  background: autoCalculate ? '#e5e7eb' : `linear-gradient(to right, #000 0%, #000 ${((shoulders - 30) / 25) * 100}%, #e5e7eb ${((shoulders - 30) / 25) * 100}%, #e5e7eb 100%)`
+                }}
+              />
+            </div>
+            
+            {/* BUST */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-medium text-black">Bust</label>
+                <span className="text-sm font-semibold text-black">{bust} cm</span>
+              </div>
+              <input
+                type="range"
+                min="70"
+                max="120"
+                value={bust}
+                onChange={(e) => setBust(Number(e.target.value))}
+                disabled={autoCalculate}
+                className="w-full h-1 bg-gray-200 rounded-full appearance-none cursor-pointer disabled:opacity-50"
+                style={{
+                  background: autoCalculate ? '#e5e7eb' : `linear-gradient(to right, #000 0%, #000 ${((bust - 70) / 50) * 100}%, #e5e7eb ${((bust - 70) / 50) * 100}%, #e5e7eb 100%)`
+                }}
+              />
+            </div>
+            
+            {/* WAIST */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-medium text-black">Waist</label>
+                <span className="text-sm font-semibold text-black">{waist} cm</span>
+              </div>
+              <input
+                type="range"
+                min="55"
+                max="100"
+                value={waist}
+                onChange={(e) => setWaist(Number(e.target.value))}
+                disabled={autoCalculate}
+                className="w-full h-1 bg-gray-200 rounded-full appearance-none cursor-pointer disabled:opacity-50"
+                style={{
+                  background: autoCalculate ? '#e5e7eb' : `linear-gradient(to right, #000 0%, #000 ${((waist - 55) / 45) * 100}%, #e5e7eb ${((waist - 55) / 45) * 100}%, #e5e7eb 100%)`
+                }}
+              />
+            </div>
+            
+            {/* HIPS */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-medium text-black">Hips</label>
+                <span className="text-sm font-semibold text-black">{hips} cm</span>
+              </div>
+              <input
+                type="range"
+                min="75"
+                max="130"
+                value={hips}
+                onChange={(e) => setHips(Number(e.target.value))}
+                disabled={autoCalculate}
+                className="w-full h-1 bg-gray-200 rounded-full appearance-none cursor-pointer disabled:opacity-50"
+                style={{
+                  background: autoCalculate ? '#e5e7eb' : `linear-gradient(to right, #000 0%, #000 ${((hips - 75) / 55) * 100}%, #e5e7eb ${((hips - 75) / 55) * 100}%, #e5e7eb 100%)`
+                }}
+              />
+            </div>
+            
+          </div>
+        )}
+        
+        {/* DIVIDER */}
+        <div className="border-t border-gray-200 my-8"></div>
+        
         {/* BODY PROFILE - Two Columns */}
-        <div className="mb-8 flex-1">
+        <div className="mb-8">
           <h3 className="text-sm font-medium text-black mb-4">Body Profile</h3>
           <div className="grid grid-cols-2 gap-3">
             
@@ -396,62 +576,16 @@ const TryOnPage = ({ onSave, userGender }) => {
               <div className="text-sm font-semibold text-black">{measurements.bmi}</div>
             </div>
             
-            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200 col-span-2">
               <div className="text-xs text-gray-500 mb-1">Body Type</div>
               <div className="text-sm font-semibold text-black">{getBodyType()}</div>
             </div>
             
-            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-              <div className="text-xs text-gray-500 mb-1">Shoulders</div>
-              <div className="text-sm font-semibold text-black">{measurements.shoulder_width_cm} cm</div>
-            </div>
-            
-            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-              <div className="text-xs text-gray-500 mb-1">Bust</div>
-              <div className="text-sm font-semibold text-black">{measurements.bust_cm} cm</div>
-            </div>
-            
-            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-              <div className="text-xs text-gray-500 mb-1">Waist</div>
-              <div className="text-sm font-semibold text-black">{measurements.waist_cm} cm</div>
-            </div>
-            
-            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200 col-span-2">
-              <div className="text-xs text-gray-500 mb-1">Hips</div>
-              <div className="text-sm font-semibold text-black">{measurements.hips_cm} cm</div>
-            </div>
-            
-          </div>
-        </div>
-        
-        {/* DIVIDER */}
-        <div className="border-t border-gray-200 my-8"></div>
-        
-        {/* FIT ANALYSIS */}
-        <div className="mb-8">
-          <h3 className="text-sm font-medium text-black mb-4">Fit Analysis</h3>
-          <div className="space-y-2">
-            <div className="flex justify-between items-center py-2 border-b border-gray-100">
-              <span className="text-xs text-gray-600">Fit Type</span>
-              <span className="text-sm font-semibold text-black capitalize">{fitAnalysis.fit_type}</span>
-            </div>
-            <div className="flex justify-between items-center py-2 border-b border-gray-100">
-              <span className="text-xs text-gray-600">Recommended Size</span>
-              <span className="text-sm font-semibold text-black">{fitAnalysis.recommended_size || 'M'}</span>
-            </div>
-            <div className="flex justify-between items-center py-2 border-b border-gray-100">
-              <span className="text-xs text-gray-600">Bust Ease</span>
-              <span className="text-sm font-semibold text-black">{fitAnalysis.ease?.bust || 'Standard'}</span>
-            </div>
-            <div className="flex justify-between items-center py-2">
-              <span className="text-xs text-gray-600">Waist Ease</span>
-              <span className="text-sm font-semibold text-black">{fitAnalysis.ease?.waist || 'Standard'}</span>
-            </div>
           </div>
         </div>
         
         {/* ACTION BUTTONS */}
-        <div className="space-y-3 mt-auto">
+        <div className="space-y-3 mt-auto pt-8">
           
           <button
             onClick={handleSaveToMoodboard}
@@ -462,7 +596,7 @@ const TryOnPage = ({ onSave, userGender }) => {
           </button>
           
           <button
-            onClick={handleShareWithCommunity}
+            onClick={() => console.log('Share with Virtrobe')}
             className="w-full py-3 px-4 bg-white text-black rounded-full font-medium text-sm hover:bg-gray-50 transition-all duration-300 flex items-center justify-center gap-2 border border-gray-300 hover:border-black"
           >
             <Share2 className="w-4 h-4" />

@@ -6,12 +6,12 @@ import { useFrame } from '@react-three/fiber';
 const MorphableMannequin = ({ 
   measurements, 
   autoRotate = true, 
-  standHeight = -1  // Height position on the stand (passed from Scene)
+  standHeight = 0.565  // standHeight - 0.2 (passed from Scene)
 }) => {
   const group = useRef();
   const { scene } = useGLTF('/models/female_mannequin.glb');
   
-  // Reference to the mesh with morph targets (shape keys)
+  // Reference to the mesh with morph targets
   const meshRef = useRef();
   
   // Find the mesh with morphTargetDictionary on mount
@@ -19,17 +19,16 @@ const MorphableMannequin = ({
     scene.traverse((child) => {
       if (child.isMesh && child.morphTargetDictionary) {
         meshRef.current = child;
-        console.log('✓ Found morphable mesh:', child.name);
-        console.log('✓ Available shape keys:', Object.keys(child.morphTargetDictionary));
-        console.log('✓ Total morph targets:', child.morphTargetInfluences.length);
+        console.log('Found morphable mesh:', child.name);
+        console.log('Available shape keys:', Object.keys(child.morphTargetDictionary));
       }
     });
   }, [scene]);
   
-  // Apply morphing based on measurements (runs whenever measurements change)
+  // Apply morphing based on measurements
   useEffect(() => {
     if (!meshRef.current) {
-      console.warn(' No morphable mesh found yet');
+      console.warn('No morphable mesh found yet');
       return;
     }
     
@@ -37,152 +36,151 @@ const MorphableMannequin = ({
     const dict = mesh.morphTargetDictionary;
     const influences = mesh.morphTargetInfluences;
     
-    // Extract measurements with defaults
+    // Extract measurements
     const { 
       height_cm = 170, 
       weight_kg = 65, 
       bust_cm = 90, 
       waist_cm = 70, 
       hips_cm = 95, 
-      shoulder_width_cm = 40 
+      shoulder_width_cm = 40,
+      bmi = 22.0
     } = measurements;
     
-    console.log(' Applying measurements:', { height_cm, weight_kg, bust_cm, waist_cm, hips_cm, shoulder_width_cm });
+    console.log(' Applying measurements:', { 
+      height_cm, 
+      weight_kg, 
+      bmi,
+      bust_cm, 
+      waist_cm, 
+      hips_cm, 
+      shoulder_width_cm 
+    });
     
     // Helper function to safely set morph influence
     const setMorph = (shapeName, value) => {
       if (dict[shapeName] !== undefined) {
         const clampedValue = Math.max(0, Math.min(1, value));
         influences[dict[shapeName]] = clampedValue;
+        console.log(`     ${shapeName} = ${clampedValue.toFixed(3)}`);
         return true;
       }
+      console.warn(`    Morph "${shapeName}" not found`);
       return false;
     };
     
-    // Reset all morphs to 0 first
+    // Reset all morphs to 0
+    console.log('Resetting morphs...');
     for (let i = 0; i < influences.length; i++) {
       influences[i] = 0;
     }
     
-    // ============================================
-    // HEIGHT MORPHING (140-200 cm range)
-    // Visual effect: Mannequin stretches/compresses
-    // Position effect: Handled by Scene.jsx via standHeight prop
-    // ============================================
-    const heightBase = 170; // Middle value
-    const heightRange = 30; // ±30cm from base
-    const heightNorm = (height_cm - heightBase) / heightRange; // -1 to 1
+    // HEIGHT MORPHING (140-200 cm)
+    const heightBase = 170;
+    const heightRange = 30;
+    const heightNorm = Math.max(-1, Math.min(1, (height_cm - heightBase) / heightRange));
     
-    if (heightNorm > 0) {
-      // Taller - apply height_tall morph
+    console.log(`📐 Height: ${height_cm}cm (norm: ${heightNorm.toFixed(2)})`);
+    if (heightNorm > 0.05) {
       setMorph('height_tall', heightNorm);
-      console.log(`  ↑ height_tall: ${heightNorm.toFixed(2)}`);
-    } else if (heightNorm < 0) {
-      // Shorter - apply height_short morph
+    } else if (heightNorm < -0.05) {
       setMorph('height_short', Math.abs(heightNorm));
-      console.log(`  ↓ height_short: ${Math.abs(heightNorm).toFixed(2)}`);
     }
     
-    // ============================================
-    // WEIGHT MORPHING (40-120 kg range)
-    // ============================================
-    const weightBase = 65; // Middle value
-    const weightRange = 30; // ±30kg from base
-    const weightNorm = (weight_kg - weightBase) / weightRange; // -1 to 1
+    // WEIGHT MORPHING - BMI-BASED
+    const bmiValue = parseFloat(bmi);
+    console.log(`BMI: ${bmiValue}`);
     
-    if (weightNorm > 0) {
-      // Heavier
-      setMorph('weight_heavy', weightNorm);
-      console.log(`  ↑ weight_heavy: ${weightNorm.toFixed(2)}`);
-    } else if (weightNorm < 0) {
-      // Lighter
-      setMorph('weight_light', Math.abs(weightNorm));
-      console.log(`  ↓ weight_light: ${Math.abs(weightNorm).toFixed(2)}`);
+    let weightMorphValue = 0;
+    
+    if (bmiValue < 18.5) {
+      // Underweight
+      weightMorphValue = -Math.max(0, Math.min(1, (18.5 - bmiValue) / 3.5));
+    } else if (bmiValue > 25) {
+      // Overweight
+      weightMorphValue = Math.max(0, Math.min(1, (bmiValue - 25) / 10));
     }
     
-    // ============================================
-    // BUST MORPHING (70-120 cm range)
-    // ============================================
+    if (weightMorphValue > 0.05) {
+      setMorph('weight_heavy', weightMorphValue);
+    } else if (weightMorphValue < -0.05) {
+      setMorph('weight_light', Math.abs(weightMorphValue));
+    }
+    
+    // BUST MORPHING (70-120 cm)
     const bustBase = 90;
     const bustRange = 20;
-    const bustNorm = (bust_cm - bustBase) / bustRange;
+    const bustNorm = Math.max(-1, Math.min(1, (bust_cm - bustBase) / bustRange));
     
-    if (bustNorm > 0) {
+    console.log(` Bust: ${bust_cm}cm (norm: ${bustNorm.toFixed(2)})`);
+    if (bustNorm > 0.05) {
       setMorph('bust_large', bustNorm);
-      console.log(`  ↑ bust_large: ${bustNorm.toFixed(2)}`);
-    } else if (bustNorm < 0) {
+    } else if (bustNorm < -0.05) {
       setMorph('bust_small', Math.abs(bustNorm));
-      console.log(`  ↓ bust_small: ${Math.abs(bustNorm).toFixed(2)}`);
     }
     
-    // ============================================
-    // WAIST MORPHING (55-100 cm range)
-    // ============================================
+    // WAIST MORPHING (55-100 cm)
     const waistBase = 70;
     const waistRange = 20;
-    const waistNorm = (waist_cm - waistBase) / waistRange;
+    const waistNorm = Math.max(-1, Math.min(1, (waist_cm - waistBase) / waistRange));
     
-    if (waistNorm > 0) {
+    console.log(`Waist: ${waist_cm}cm (norm: ${waistNorm.toFixed(2)})`);
+    if (waistNorm > 0.05) {
       setMorph('waist_wide', waistNorm);
-      console.log(`  ↑ waist_wide: ${waistNorm.toFixed(2)}`);
-    } else if (waistNorm < 0) {
+    } else if (waistNorm < -0.05) {
       setMorph('waist_narrow', Math.abs(waistNorm));
-      console.log(`  ↓ waist_narrow: ${Math.abs(waistNorm).toFixed(2)}`);
     }
     
-    // ============================================
-    // HIPS MORPHING (75-130 cm range)
-    // ============================================
+    // HIPS MORPHING (75-130 cm)
     const hipsBase = 95;
     const hipsRange = 25;
-    const hipsNorm = (hips_cm - hipsBase) / hipsRange;
+    const hipsNorm = Math.max(-1, Math.min(1, (hips_cm - hipsBase) / hipsRange));
     
-    if (hipsNorm > 0) {
+    console.log(` Hips: ${hips_cm}cm (norm: ${hipsNorm.toFixed(2)})`);
+    if (hipsNorm > 0.05) {
       setMorph('hips_wide', hipsNorm);
-      console.log(`  ↑ hips_wide: ${hipsNorm.toFixed(2)}`);
-    } else if (hipsNorm < 0) {
+    } else if (hipsNorm < -0.05) {
       setMorph('hips_narrow', Math.abs(hipsNorm));
-      console.log(`  ↓ hips_narrow: ${Math.abs(hipsNorm).toFixed(2)}`);
     }
     
-    // ============================================
-    // SHOULDERS MORPHING (30-55 cm range)
-    // ============================================
+    // SHOULDERS MORPHING (30-55 cm)
     const shoulderBase = 40;
     const shoulderRange = 10;
-    const shoulderNorm = (shoulder_width_cm - shoulderBase) / shoulderRange;
+    const shoulderNorm = Math.max(-1, Math.min(1, (shoulder_width_cm - shoulderBase) / shoulderRange));
     
-    if (shoulderNorm > 0) {
+    console.log(` Shoulders: ${shoulder_width_cm}cm (norm: ${shoulderNorm.toFixed(2)})`);
+    if (shoulderNorm > 0.05) {
       setMorph('shoulders_broad', shoulderNorm);
-      console.log(`  ↑ shoulders_broad: ${shoulderNorm.toFixed(2)}`);
-    } else if (shoulderNorm < 0) {
+    } else if (shoulderNorm < -0.05) {
       setMorph('shoulders_narrow', Math.abs(shoulderNorm));
-      console.log(`  ↓ shoulders_narrow: ${Math.abs(shoulderNorm).toFixed(2)}`);
     }
     
-    console.log('✓ Morphing complete');
+    console.log('Morphing complete\n');
     
-  }, [measurements]); // Re-run whenever measurements change
+  }, [measurements]);
   
   // Auto-rotation animation
   useFrame((state, delta) => {
     if (autoRotate && group.current) {
-      group.current.rotation.y += delta * 0.3; // Smooth rotation
+      group.current.rotation.y += delta * 0.3;
     }
   });
+  
+  // MANNEQUIN POSITIONED AT: standHeight (which is already standHeight - 0.2 from Scene)
+  // This positions the mannequin on top of the display stand
   
   return (
     <group 
       ref={group} 
-      position={[0, standHeight+0.9, 0]}  // Y position adjusts based on height
-      scale={0.8}  // ADJUST THIS: Increase mannequin size (try 1.5, 2, 2.5, 3)
+      position={[0, standHeight, 0]}
+      scale={0.6}
     >
       <primitive object={scene} />
     </group>
   );
 };
 
-// Preload the model (improves performance)
+// Preload the model
 useGLTF.preload('/models/female_mannequin.glb');
 
 export default MorphableMannequin;

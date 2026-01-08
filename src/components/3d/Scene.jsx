@@ -1,11 +1,9 @@
 // src/components/3d/Scene.jsx
 import React from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Environment, ContactShadows, Grid, useGLTF } from '@react-three/drei';
+import { OrbitControls, Environment, ContactShadows, Grid } from '@react-three/drei';
 import MorphableMannequin from './MorphableMannequin';
 import DisplayStand from './DisplayStand';
-
-
 
 const Scene = ({ 
   measurements, 
@@ -15,69 +13,51 @@ const Scene = ({
   showGarment, 
   autoRotate 
 }) => {
-  // Calculate vertical offset for mannequin based on height
-  // This creates illusion of mannequin being raised/lowered on stand
-  const calculateMannequinHeight = () => {
+  // Calculate display stand height based on body height
+  // Legs = 45% of total body height
+  const calculateStandHeight = () => {
     const { height_cm = 170 } = measurements;
-    
-    // Base height is 170cm at position 0
-    // For every cm above/below 170, adjust by 0.01 units
-    const heightBase = 170;
-    const heightDelta = height_cm - heightBase;
-    const verticalOffset = (heightDelta / 100) * 0.5; // Scale factor for visual effect
-    
-    return -1 + verticalOffset; // Base position (-1) + offset
+    const heightInMeters = height_cm / 100;
+    const legsProportion = 0.45;
+    return heightInMeters * legsProportion; // Stand height in scene units
   };
+  
+  const standHeight = calculateStandHeight();
 
   return (
     <Canvas 
       camera={{ 
-        position: [0, 1, 4], 
+        position: [0, 1.2, 4], 
         fov: 50 
       }}
       shadows
       style={{ background: '#fafafa' }}
     >
-      {/* ============================================
-          LIGHTING SETUP - Minimalist & Clean
-          ============================================ */}
-      
-      {/* Ambient light - soft overall illumination */}
+      {/* LIGHTING */}
       <ambientLight intensity={0.6} />
       
-      {/* Main overhead spotlight - directly above mannequin */}
       <spotLight 
-        position={[0, 6, 0]}           // Directly overhead
+        position={[0, 6, 0]}
         intensity={1.5}
-        angle={0.6}                    // Spotlight cone angle
-        penumbra={0.5}                 // Soft edges
+        angle={0.6}
+        penumbra={0.5}
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
-        target-position={[0, 0, 0]}    // Points down at mannequin
+        target-position={[0, 1, 0]}
       />
       
-      {/* Subtle directional light for definition */}
-      <directionalLight 
-        position={[2, 3, 2]} 
-        intensity={0.4}
-      />
-      
-      {/* Fill lights - reduce harsh shadows */}
+      <directionalLight position={[2, 3, 2]} intensity={0.4} />
       <pointLight position={[-2, 1, -2]} intensity={0.2} />
       <pointLight position={[2, 1, -2]} intensity={0.2} />
       
-      {/* ============================================
-          ENVIRONMENT & BACKGROUND
-          ============================================ */}
-      
-      {/* HDR environment for realistic reflections */}
+      {/* ENVIRONMENT */}
       <Environment preset="studio" />
       
-      {/* SLEEK DARK MINIMALIST FLOOR */}
+      {/* FLOOR AT y=0 */}
       <mesh 
         rotation={[-Math.PI / 2, 0, 0]} 
-        position={[0, -1, 0]} 
+        position={[0, 0, 0]} 
         receiveShadow
       >
         <planeGeometry args={[20, 20]} />
@@ -88,7 +68,7 @@ const Scene = ({
         />
       </mesh>
       
-      {/* Subtle grid overlay on dark floor */}
+      {/* GRID OVERLAY */}
       <Grid 
         args={[20, 20]} 
         cellSize={0.5} 
@@ -96,12 +76,12 @@ const Scene = ({
         sectionColor="#505050"
         fadeDistance={15}
         fadeStrength={1}
-        position={[0, -0.99, 0]}
+        position={[0, 0.01, 0]}
       />
       
-      {/* Contact shadows under the mannequin */}
+      {/* CONTACT SHADOWS */}
       <ContactShadows 
-        position={[0, -0.99, 0]} 
+        position={[0, 0.01, 0]} 
         opacity={0.4} 
         scale={4} 
         blur={2.5} 
@@ -109,26 +89,20 @@ const Scene = ({
         color="#000000"
       />
       
-      {/* ============================================
-          DISPLAY STAND - Fixed on floor
-          ============================================ */}
+      {/* DISPLAY STAND - STRICTLY AT y=0 */}
+      <DisplayStand 
+        position={[0, 0, 0]}
+        scale={0.7}
+      />
       
-      <DisplayStand />
-      
-      {/* ============================================
-          MORPHABLE MANNEQUIN - Adjusts height on stand
-          ============================================ */}
-      
+      {/* MANNEQUIN - POSITIONED AT standHeight - 0.2 */}
       <MorphableMannequin 
         measurements={measurements}
         autoRotate={autoRotate}
-        standHeight={calculateMannequinHeight()}  // Pass calculated height
+        standHeight={standHeight - 0.2}
       />
       
-      {/* ============================================
-          CAMERA CONTROLS
-          ============================================ */}
-      
+      {/* CAMERA CONTROLS */}
       <OrbitControls 
         enablePan={false}
         enableZoom={true}
