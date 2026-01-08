@@ -3,7 +3,11 @@ import React, { useRef, useEffect } from 'react';
 import { useGLTF } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 
-const MorphableMannequin = ({ measurements, autoRotate = true }) => {
+const MorphableMannequin = ({ 
+  measurements, 
+  autoRotate = true, 
+  standHeight = -1  // Height position on the stand (passed from Scene)
+}) => {
   const group = useRef();
   const { scene } = useGLTF('/models/female_mannequin.glb');
   
@@ -15,9 +19,9 @@ const MorphableMannequin = ({ measurements, autoRotate = true }) => {
     scene.traverse((child) => {
       if (child.isMesh && child.morphTargetDictionary) {
         meshRef.current = child;
-        console.log(' Found morphable mesh:', child.name);
-        console.log(' Available shape keys:', Object.keys(child.morphTargetDictionary));
-        console.log(' Total morph targets:', child.morphTargetInfluences.length);
+        console.log('✓ Found morphable mesh:', child.name);
+        console.log('✓ Available shape keys:', Object.keys(child.morphTargetDictionary));
+        console.log('✓ Total morph targets:', child.morphTargetInfluences.length);
       }
     });
   }, [scene]);
@@ -25,7 +29,7 @@ const MorphableMannequin = ({ measurements, autoRotate = true }) => {
   // Apply morphing based on measurements (runs whenever measurements change)
   useEffect(() => {
     if (!meshRef.current) {
-      console.warn('No morphable mesh found yet');
+      console.warn(' No morphable mesh found yet');
       return;
     }
     
@@ -62,17 +66,19 @@ const MorphableMannequin = ({ measurements, autoRotate = true }) => {
     
     // ============================================
     // HEIGHT MORPHING (140-200 cm range)
+    // Visual effect: Mannequin stretches/compresses
+    // Position effect: Handled by Scene.jsx via standHeight prop
     // ============================================
     const heightBase = 170; // Middle value
     const heightRange = 30; // ±30cm from base
     const heightNorm = (height_cm - heightBase) / heightRange; // -1 to 1
     
     if (heightNorm > 0) {
-      // Taller
+      // Taller - apply height_tall morph
       setMorph('height_tall', heightNorm);
       console.log(`  ↑ height_tall: ${heightNorm.toFixed(2)}`);
     } else if (heightNorm < 0) {
-      // Shorter
+      // Shorter - apply height_short morph
       setMorph('height_short', Math.abs(heightNorm));
       console.log(`  ↓ height_short: ${Math.abs(heightNorm).toFixed(2)}`);
     }
@@ -154,7 +160,7 @@ const MorphableMannequin = ({ measurements, autoRotate = true }) => {
       console.log(`  ↓ shoulders_narrow: ${Math.abs(shoulderNorm).toFixed(2)}`);
     }
     
-    console.log(' Morphing complete');
+    console.log('✓ Morphing complete');
     
   }, [measurements]); // Re-run whenever measurements change
   
@@ -166,7 +172,11 @@ const MorphableMannequin = ({ measurements, autoRotate = true }) => {
   });
   
   return (
-    <group ref={group} position={[0, -1, 0]} scale={1}>
+    <group 
+      ref={group} 
+      position={[0, standHeight+0.9, 0]}  // Y position adjusts based on height
+      scale={0.8}  // ADJUST THIS: Increase mannequin size (try 1.5, 2, 2.5, 3)
+    >
       <primitive object={scene} />
     </group>
   );
