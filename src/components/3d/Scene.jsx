@@ -89,9 +89,9 @@ const Scene = ({
         color="#000000"
       />
       
-      {/* DISPLAY STAND - STRICTLY AT y=0 */}
+      {/* DISPLAY STAND - STRICTLY AT y=0.3 */}
       <DisplayStand 
-        position={[0, 0, 0]}
+        position={[0, 0.7, 0]}
         scale={0.7}
       />
       

@@ -3,7 +3,7 @@ import React, { useRef } from 'react';
 import { useGLTF } from '@react-three/drei';
 
 const DisplayStand = ({
-  position = [0, 0, 0],   // Always on floor
+  position = [0, 0.5, 0],   // Always on floor
   scale = 0.7             // Adjust stand size here
 }) => {
   const standRef = useRef();
