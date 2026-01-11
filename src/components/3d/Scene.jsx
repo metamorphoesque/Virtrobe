@@ -1,9 +1,12 @@
-// src/components/3d/Scene.jsx
+// 1. src/components/3d/Scene.jsx (UPDATED WITH PHYSICS)
+// ============================================
 import React from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Environment, ContactShadows, Grid, useGLTF } from '@react-three/drei';
 import MorphableMannequin from './MorphableMannequin';
 import HybridGarment from './HybridGarment';
+import ClothSimulation from './ClothSimulation';
+import { useClothPhysics } from '../../hooks/useClothPhysics';
 
 // Display Stand Component - Always stays on floor
 const DisplayStand = ({ position = [0, 0, 0], scale = 1 }) => {
@@ -21,35 +24,39 @@ const DisplayStand = ({ position = [0, 0, 0], scale = 1 }) => {
 // Preload the stand model
 useGLTF.preload('/models/DisplayStand.glb');
 
-const Scene = ({ 
+// Scene Content Component (contains physics logic)
+const SceneContent = ({ 
   measurements, 
   garmentType, 
   garmentColor, 
   showMeasurements, 
   showGarment, 
   autoRotate,
-  garmentData  // NEW: Receive garment data from parent
+  garmentData,
+  enableClothPhysics = false  // NEW: Enable/disable physics
 }) => {
   // Calculate display stand height based on body height
-  // Legs = 45% of total body height
   const calculateStandHeight = () => {
     const { height_cm = 170 } = measurements;
     const heightInMeters = height_cm / 100;
     const legsProportion = 0.45;
-    return heightInMeters * legsProportion; // Stand height in scene units
+    return heightInMeters * legsProportion;
   };
   
   const standHeight = calculateStandHeight();
+  
+  // Initialize cloth physics hook
+  const clothPhysics = useClothPhysics({ enabled: enableClothPhysics });
+  
+  // Create mannequin collider when measurements change
+  React.useEffect(() => {
+    if (enableClothPhysics && clothPhysics.createMannequinCollider) {
+      clothPhysics.createMannequinCollider(measurements);
+    }
+  }, [measurements, enableClothPhysics, clothPhysics]);
 
   return (
-    <Canvas 
-      camera={{ 
-        position: [0, 1.2, 4], 
-        fov: 50 
-      }}
-      shadows
-      style={{ background: '#fafafa' }}
-    >
+    <>
       {/* ============================================
           LIGHTING SETUP - Minimalist & Clean
           ============================================ */}
@@ -138,10 +145,27 @@ const Scene = ({
       />
       
       {/* ============================================
-          HYBRID GARMENT - Rendered when available
+          CLOTH PHYSICS SIMULATION
           ============================================ */}
       
-      {garmentData && showGarment && (
+      {enableClothPhysics && showGarment && (
+        <ClothSimulation
+          clothPhysics={clothPhysics}
+          width={0.8}
+          height={1.2}
+          segmentsX={20}
+          segmentsY={30}
+          color={garmentColor}
+          visible={true}
+          position={[0, 1.8, 0.1]}
+        />
+      )}
+      
+      {/* ============================================
+          HYBRID GARMENT - Rendered when physics is OFF
+          ============================================ */}
+      
+      {!enableClothPhysics && garmentData && showGarment && (
         <HybridGarment garmentData={garmentData} />
       )}
       
@@ -160,7 +184,21 @@ const Scene = ({
         enableDamping={true}
         dampingFactor={0.05}
       />
-      
+    </>
+  );
+};
+
+const Scene = (props) => {
+  return (
+    <Canvas 
+      camera={{ 
+        position: [0, 1.2, 4], 
+        fov: 50 
+      }}
+      shadows
+      style={{ background: '#fafafa' }}
+    >
+      <SceneContent {...props} />
     </Canvas>
   );
 };
