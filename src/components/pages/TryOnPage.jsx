@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Save, Share2, Camera, Lock, Unlock, User } from 'lucide-react';
 import Scene from '../3d/Scene';
+import hybridGarmentGenerator from '../../services/hybridGarmentGenerator';
 
 const TryOnPage = ({ onSave }) => {
   const [userGender, setUserGender] = useState(null);
@@ -16,6 +17,8 @@ const TryOnPage = ({ onSave }) => {
   const [weightUnit, setWeightUnit] = useState('kg');
   const [selectedClothingType, setSelectedClothingType] = useState('shirt');
   const [uploadedImage, setUploadedImage] = useState(null);
+  const [garmentData, setGarmentData] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
   
   const calculateBMI = (heightCm, weightKg) => {
     const heightM = heightCm / 100;
@@ -152,15 +155,29 @@ const TryOnPage = ({ onSave }) => {
     setTimeout(() => setShowSaveNotification(false), 3000);
   };
   
-  const handleImageUpload = (event) => {
+  const handleImageUpload = async (event) => {
     const file = event.target.files[0];
-    if (file) {
+    if (!file) return;
+
+    setIsProcessing(true);
+    
+    try {
+      const result = await hybridGarmentGenerator.generate(file, measurements);
+      setGarmentData(result);
+      
       const reader = new FileReader();
       reader.onloadend = () => setUploadedImage(reader.result);
       reader.readAsDataURL(file);
+      
+      console.log('Generated garment:', result);
+    } catch (error) {
+      console.error('Failed to process garment:', error);
+      alert('Failed to process garment. Please try another image.');
+    } finally {
+      setIsProcessing(false);
     }
   };
-  
+    
   const clothingTypes = [
     { id: 'shirt', label: 'Shirt' },
     { id: 'dress', label: 'Dress' },
@@ -191,23 +208,23 @@ const TryOnPage = ({ onSave }) => {
       )}
       
       <div className="flex gap-4 flex-1">
-        <div className="w-24 bg-white border-r border-gray-200 flex flex-col items-center py-6 gap-4">
+        <div className="w-24 bg-white border-r border-black/10 flex flex-col items-center py-6 gap-4">
           <div className="relative">
-            <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" id="image-upload" disabled={!userGender} />
-            <label htmlFor="image-upload" className={`w-16 h-16 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 border-2 border-gray-300 flex items-center justify-center transition-all duration-300 ${userGender ? 'hover:border-black cursor-pointer hover:scale-105' : 'opacity-40 cursor-not-allowed'}`}>
-              <Camera className="w-6 h-6 text-black" />
+            <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" id="image-upload" disabled={!userGender || isProcessing} />
+            <label htmlFor="image-upload" className={`w-16 h-16 rounded-lg bg-white border-2 flex items-center justify-center transition-all duration-300 ${userGender && !isProcessing ? 'border-black hover:bg-black hover:text-white cursor-pointer hover:scale-105' : 'border-gray-300 opacity-40 cursor-not-allowed'}`}>
+              <Camera className="w-6 h-6" />
             </label>
             <span className="text-[8px] text-gray-500 text-center block mt-1">Upload</span>
           </div>
           
-          <div className="w-full h-px bg-gray-200 my-2"></div>
+          <div className="w-full h-px bg-black/10 my-2"></div>
           
           {clothingTypes.map((type) => (
             <button 
               key={type.id} 
               onClick={() => userGender && setSelectedClothingType(type.id)} 
               disabled={!userGender}
-              className={`w-16 h-16 rounded-xl flex flex-col items-center justify-center transition-all duration-300 ${!userGender ? 'opacity-40 cursor-not-allowed bg-gray-100' : selectedClothingType === type.id ? 'bg-black text-white scale-105 shadow-lg' : 'bg-gray-100 hover:bg-gray-200 border-2 border-gray-200 hover:border-black text-gray-700'}`}
+              className={`w-16 h-16 rounded-lg flex flex-col items-center justify-center transition-all duration-300 border-2 ${!userGender ? 'opacity-40 cursor-not-allowed border-gray-300 bg-white' : selectedClothingType === type.id ? 'bg-black text-white border-black scale-105 shadow-lg' : 'bg-white border-gray-300 hover:border-black text-black'}`}
             >
               <span className="text-[10px] font-medium">{type.label}</span>
             </button>
@@ -215,35 +232,35 @@ const TryOnPage = ({ onSave }) => {
         </div>
         
         <div className="flex-1 flex flex-col">
-          <div className="relative bg-gray-50 w-full" style={{ aspectRatio: '16/9' }}>
+          <div className="relative bg-gray-50 w-full border border-black/10" style={{ aspectRatio: '16/9' }}>
             {!userGender && (
-              <div className="absolute inset-0 bg-white/95 backdrop-blur-sm z-10 flex items-center justify-center p-8">
-                <div className="w-full max-w-4xl">
-                  <div className="text-center mb-8">
+              <div className="absolute inset-0 bg-white z-10 flex items-center justify-center p-8">
+                <div className="w-full max-w-5xl">
+                  <div className="text-center mb-10">
                     <div className="inline-flex items-center justify-center w-16 h-16 bg-black rounded-full mb-4">
                       <User className="w-8 h-8 text-white" />
                     </div>
-                    <h3 className="text-2xl font-semibold text-black mb-2">Select Your Mannequin</h3>
-                    <p className="text-sm text-gray-500">Choose a silhoette type to begin customizing</p>
+                    <h3 className="text-3xl font-light text-black mb-2">Select Your Mannequin</h3>
+                    <p className="text-sm text-gray-500">Choose a silhouette type to begin</p>
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-6">
-                    <button onClick={() => setUserGender('female')} className="group relative bg-white rounded-2xl p-6 border-2 border-gray-200 hover:border-black -400 transition-all duration-300 hover:shadow-xl">
-                      <div className="aspect-[3/4] bg-gradient-to-br from-black-50 to-grey-50 rounded-xl mb-4 overflow-hidden">
-                        <Scene measurements={{...measurements, gender: 'female'}} garmentType="shirt" garmentColor="#000000" showMeasurements={false} showGarment={false} autoRotate={true} />
+                  <div className="grid grid-cols-2 gap-8">
+                    <button onClick={() => setUserGender('female')} className="group relative bg-white rounded-lg p-4 border-2 border-gray-200 hover:border-black transition-all duration-300 hover:shadow-xl">
+                      <div className="aspect-[3/4] bg-white rounded-lg mb-4 overflow-hidden border border-black/10">
+                        <Scene measurements={{...measurements, gender: 'female'}} garmentType="shirt" garmentColor="#000000" showMeasurements={false} showGarment={false} autoRotate={true} garmentData={null} />
                       </div>
                       <div className="text-center">
-                        <h4 className="text-lg font-semibold text-black group-hover:text-pink-600 transition-colors">Feminine Mannequin</h4>
+                        <h4 className="text-lg font-medium text-black">Feminine Mannequin</h4>
                         <p className="text-xs text-gray-500 mt-1">Feminine body proportions</p>
                       </div>
                     </button>
                     
-                    <button onClick={() => setUserGender('male')} className="group relative bg-white rounded-2xl p-6 border-2 border-gray-200 hover:border-black-400 transition-all duration-300 hover:shadow-xl">
-                      <div className="aspect-[3/4] bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl mb-4 overflow-hidden">
-                        <Scene measurements={{...measurements, gender: 'male'}} garmentType="shirt" garmentColor="#000000" showMeasurements={false} showGarment={false} autoRotate={true} />
+                    <button onClick={() => setUserGender('male')} className="group relative bg-white rounded-lg p-4 border-2 border-gray-200 hover:border-black transition-all duration-300 hover:shadow-xl">
+                      <div className="aspect-[3/4] bg-white rounded-lg mb-4 overflow-hidden border border-black/10">
+                        <Scene measurements={{...measurements, gender: 'male'}} garmentType="shirt" garmentColor="#000000" showMeasurements={false} showGarment={false} autoRotate={true} garmentData={null} />
                       </div>
                       <div className="text-center">
-                        <h4 className="text-lg font-semibold text-black group-hover:text-blue-600 transition-colors">Masculine Mannequin</h4>
+                        <h4 className="text-lg font-medium text-black">Masculine Mannequin</h4>
                         <p className="text-xs text-gray-500 mt-1">Masculine body proportions</p>
                       </div>
                     </button>
@@ -252,39 +269,45 @@ const TryOnPage = ({ onSave }) => {
               </div>
             )}
             
-            <Scene measurements={measurements} garmentType={selectedClothingType} garmentColor="#000000" showMeasurements={false} showGarment={true} autoRotate={true} />
+            <Scene measurements={measurements} garmentType={selectedClothingType} garmentColor="#000000" showMeasurements={false} showGarment={true} autoRotate={true} garmentData={garmentData} />
             
-            <div className="absolute top-4 left-4 bg-white px-3 py-1.5 rounded-full shadow-md border border-gray-200">
+            <div className="absolute top-4 left-4 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-black/10">
               <span className="text-xs font-semibold text-black tracking-wide">3D PREVIEW</span>
             </div>
             
             {userGender && (
               <div className="absolute top-4 right-4 flex items-center gap-2">
-                <div className={`px-3 py-1.5 rounded-full shadow-lg ${userGender === 'female' ? 'bg-pink-500' : 'bg-blue-500'} text-white`}>
+                <div className="px-3 py-1.5 rounded-lg shadow-sm bg-black text-white border border-black">
                   <span className="text-xs font-semibold capitalize">{userGender}</span>
                 </div>
-                <button onClick={() => setUserGender(null)} className="px-3 py-1.5 bg-white rounded-full shadow-md border border-gray-200 hover:border-black transition-colors">
+                <button onClick={() => setUserGender(null)} className="px-3 py-1.5 bg-white rounded-lg shadow-sm border border-black/20 hover:border-black transition-colors">
                   <User className="w-3 h-3 text-black" />
                 </button>
               </div>
             )}
             
-            {uploadedImage && userGender && (
-              <div className="absolute bottom-4 left-4 bg-white rounded-lg shadow-lg overflow-hidden">
+            {isProcessing && (
+              <div className="absolute bottom-4 left-4 bg-black text-white px-4 py-2 rounded-lg shadow-lg">
+                <span className="text-xs font-medium">Processing garment...</span>
+              </div>
+            )}
+            
+            {uploadedImage && userGender && !isProcessing && (
+              <div className="absolute bottom-4 left-4 bg-white rounded-lg shadow-lg overflow-hidden border border-black/10">
                 <img src={uploadedImage} alt="Uploaded" className="w-16 h-16 object-cover" />
               </div>
             )}
           </div>
           
           {userGender && (
-            <div className="bg-white border-t border-gray-200 p-6">
+            <div className="bg-white border-t border-black/10 p-6">
               <h3 className="text-sm font-medium text-black mb-4">Similar Looks</h3>
               <div className="grid grid-cols-4 gap-4">
                 {[1, 2, 3, 4].map((i) => (
                   <div key={i} className="group cursor-pointer">
-                    <div className="aspect-[3/4] bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg mb-2 border border-gray-200 hover:border-black transition-all">
+                    <div className="aspect-[3/4] bg-gray-50 rounded-lg mb-2 border border-black/10 hover:border-black transition-all">
                       <div className="w-full h-full flex items-center justify-center">
-                        <div className="flex flex-col items-center opacity-40 group-hover:opacity-60 transition-opacity">
+                        <div className="flex flex-col items-center opacity-30 group-hover:opacity-50 transition-opacity">
                           <div className="w-6 h-6 rounded-full bg-black/10 mb-1" />
                           <div className="w-8 h-12 bg-black/10 rounded-lg mb-1" />
                           <div className="flex gap-1">
@@ -294,7 +317,7 @@ const TryOnPage = ({ onSave }) => {
                         </div>
                       </div>
                     </div>
-                    <p className="text-xs text-gray-600 font-medium">Style {i}</p>
+                    <p className="text-xs text-black font-medium">Style {i}</p>
                   </div>
                 ))}
               </div>
@@ -303,19 +326,19 @@ const TryOnPage = ({ onSave }) => {
         </div>
       </div>
       
-      <div className="w-96 bg-white border-l border-gray-200 flex flex-col p-8 overflow-y-auto relative">
+      <div className="w-96 bg-white border-l border-black/10 flex flex-col p-8 overflow-y-auto relative">
         {!userGender && (
-          <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center pointer-events-none">
+          <div className="absolute inset-0 bg-white/95 backdrop-blur-sm z-10 flex items-center justify-center pointer-events-none">
             <div className="text-center">
               <Lock className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-              <p className="text-sm font-medium text-gray-600">Select a mannequin to analyse body profile</p>
+              <p className="text-sm font-medium text-gray-600">Select a mannequin to analyze body profile</p>
             </div>
           </div>
         )}
         
         <div className={`${!userGender ? 'opacity-30' : 'opacity-100'} transition-opacity`}>
           <div className="mb-8">
-            <h2 className="text-2xl font-serif text-black mb-1">Body Measurements</h2>
+            <h2 className="text-2xl font-light text-black mb-1">Body Measurements</h2>
             <p className="text-sm text-gray-500 font-light capitalize">{userGender || 'Not selected'}</p>
           </div>
           
@@ -324,7 +347,7 @@ const TryOnPage = ({ onSave }) => {
               <label className="text-sm font-medium text-black">Height</label>
               <div className="flex items-center gap-2">
                 <span className="text-lg font-semibold text-black">{heightUnit === 'cm' ? `${height} cm` : `${heightInFt} ft`}</span>
-                <button onClick={() => userGender && setHeightUnit(heightUnit === 'cm' ? 'ft' : 'cm')} disabled={!userGender} className="text-xs text-gray-500 hover:text-black px-2 py-1 rounded border border-gray-300 hover:border-black disabled:opacity-50 disabled:cursor-not-allowed">{heightUnit === 'cm' ? 'ft' : 'cm'}</button>
+                <button onClick={() => userGender && setHeightUnit(heightUnit === 'cm' ? 'ft' : 'cm')} disabled={!userGender} className="text-xs text-gray-600 hover:text-black px-2 py-1 rounded border border-gray-300 hover:border-black disabled:opacity-50 disabled:cursor-not-allowed transition-colors">{heightUnit === 'cm' ? 'ft' : 'cm'}</button>
               </div>
             </div>
             <input type="range" min="140" max="200" value={height} onChange={(e) => userGender && setHeight(Number(e.target.value))} disabled={!userGender} className="w-full h-2 bg-gray-200 rounded-full appearance-none cursor-pointer accent-black disabled:cursor-not-allowed" />
@@ -339,7 +362,7 @@ const TryOnPage = ({ onSave }) => {
               <label className="text-sm font-medium text-black">Weight</label>
               <div className="flex items-center gap-2">
                 <span className="text-lg font-semibold text-black">{weightUnit === 'kg' ? `${weight} kg` : `${weightInLbs} lbs`}</span>
-                <button onClick={() => userGender && setWeightUnit(weightUnit === 'kg' ? 'lbs' : 'kg')} disabled={!userGender} className="text-xs text-gray-500 hover:text-black px-2 py-1 rounded border border-gray-300 hover:border-black disabled:opacity-50 disabled:cursor-not-allowed">{weightUnit === 'kg' ? 'lbs' : 'kg'}</button>
+                <button onClick={() => userGender && setWeightUnit(weightUnit === 'kg' ? 'lbs' : 'kg')} disabled={!userGender} className="text-xs text-gray-600 hover:text-black px-2 py-1 rounded border border-gray-300 hover:border-black disabled:opacity-50 disabled:cursor-not-allowed transition-colors">{weightUnit === 'kg' ? 'lbs' : 'kg'}</button>
               </div>
             </div>
             <input type="range" min="40" max="120" value={weight} onChange={(e) => userGender && setWeight(Number(e.target.value))} disabled={!userGender} className="w-full h-2 bg-gray-200 rounded-full appearance-none cursor-pointer accent-black disabled:cursor-not-allowed" />
@@ -349,7 +372,7 @@ const TryOnPage = ({ onSave }) => {
             </div>
           </div>
           
-          <div className="bg-gray-50 rounded-lg p-4 mb-8">
+          <div className="bg-gray-50 rounded-lg p-4 mb-8 border border-black/10">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium text-gray-600">BMI</span>
               <span className="text-lg font-bold text-black">{bmi}</span>
@@ -360,7 +383,7 @@ const TryOnPage = ({ onSave }) => {
             </div>
           </div>
           
-          <div className="border-t border-gray-200 my-8"></div>
+          <div className="border-t border-black/10 my-8"></div>
           
           <div className="mb-6">
             <div className="flex items-center justify-between mb-4">
@@ -368,7 +391,7 @@ const TryOnPage = ({ onSave }) => {
                 <h3 className="text-sm font-medium text-black">Detailed Measurements</h3>
                 <p className="text-xs text-gray-500 mt-1">{autoCalculate ? 'Auto-calculated' : 'Manual mode'}</p>
               </div>
-              <button onClick={() => userGender && setAutoCalculate(!autoCalculate)} disabled={!userGender} className={`px-4 py-2 rounded-full text-xs font-medium transition-all flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed ${autoCalculate ? 'bg-gray-200 text-gray-700' : 'bg-black text-white'}`}>
+              <button onClick={() => userGender && setAutoCalculate(!autoCalculate)} disabled={!userGender} className={`px-4 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed border ${autoCalculate ? 'bg-white text-black border-gray-300' : 'bg-black text-white border-black'}`}>
                 {autoCalculate ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
                 {autoCalculate ? 'Enable Manual' : 'Manual'}
               </button>
@@ -394,13 +417,13 @@ const TryOnPage = ({ onSave }) => {
             })}
           </div>
           
-          <div className="space-y-3 pt-6 border-t border-gray-200">
+          <div className="space-y-3 pt-6 border-t border-black/10">
             <button onClick={handleSaveToMoodboard} disabled={!userGender} className="w-full bg-black text-white py-3 rounded-lg font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
               <Save className="w-4 h-4" />
               Save to Moodboard
             </button>
             
-            <button disabled={!userGender} className="w-full bg-gray-100 text-black py-3 rounded-lg font-medium hover:bg-gray-200 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+            <button disabled={!userGender} className="w-full bg-white text-black py-3 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed border border-black/20">
               <Share2 className="w-4 h-4" />
               Share Look
             </button>

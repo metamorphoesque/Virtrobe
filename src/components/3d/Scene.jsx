@@ -1,9 +1,25 @@
 // src/components/3d/Scene.jsx
 import React from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Environment, ContactShadows, Grid } from '@react-three/drei';
+import { OrbitControls, Environment, ContactShadows, Grid, useGLTF } from '@react-three/drei';
 import MorphableMannequin from './MorphableMannequin';
-import DisplayStand from './DisplayStand';
+import HybridGarment from './HybridGarment';
+
+// Display Stand Component - Always stays on floor
+const DisplayStand = ({ position = [0, 0, 0], scale = 1 }) => {
+  const { scene } = useGLTF('/models/DisplayStand.glb');
+  
+  return (
+    <primitive 
+      object={scene} 
+      position={position}
+      scale={scale}
+    />
+  );
+};
+
+// Preload the stand model
+useGLTF.preload('/models/DisplayStand.glb');
 
 const Scene = ({ 
   measurements, 
@@ -11,7 +27,8 @@ const Scene = ({
   garmentColor, 
   showMeasurements, 
   showGarment, 
-  autoRotate 
+  autoRotate,
+  garmentData  // NEW: Receive garment data from parent
 }) => {
   // Calculate display stand height based on body height
   // Legs = 45% of total body height
@@ -33,9 +50,14 @@ const Scene = ({
       shadows
       style={{ background: '#fafafa' }}
     >
-      {/* LIGHTING */}
+      {/* ============================================
+          LIGHTING SETUP - Minimalist & Clean
+          ============================================ */}
+      
+      {/* Ambient light - soft overall illumination */}
       <ambientLight intensity={0.6} />
       
+      {/* Main overhead spotlight - directly above mannequin */}
       <spotLight 
         position={[0, 6, 0]}
         intensity={1.5}
@@ -47,14 +69,21 @@ const Scene = ({
         target-position={[0, 1, 0]}
       />
       
+      {/* Subtle directional light for definition */}
       <directionalLight position={[2, 3, 2]} intensity={0.4} />
+      
+      {/* Fill lights - reduce harsh shadows */}
       <pointLight position={[-2, 1, -2]} intensity={0.2} />
       <pointLight position={[2, 1, -2]} intensity={0.2} />
       
-      {/* ENVIRONMENT */}
+      {/* ============================================
+          ENVIRONMENT & BACKGROUND
+          ============================================ */}
+      
+      {/* HDR environment for realistic reflections */}
       <Environment preset="studio" />
       
-      {/* FLOOR AT y=0 */}
+      {/* SLEEK DARK MINIMALIST FLOOR AT y=0 */}
       <mesh 
         rotation={[-Math.PI / 2, 0, 0]} 
         position={[0, 0, 0]} 
@@ -68,7 +97,7 @@ const Scene = ({
         />
       </mesh>
       
-      {/* GRID OVERLAY */}
+      {/* Subtle grid overlay on dark floor */}
       <Grid 
         args={[20, 20]} 
         cellSize={0.5} 
@@ -79,7 +108,7 @@ const Scene = ({
         position={[0, 0.01, 0]}
       />
       
-      {/* CONTACT SHADOWS */}
+      {/* Contact shadows under the mannequin */}
       <ContactShadows 
         position={[0, 0.01, 0]} 
         opacity={0.4} 
@@ -89,20 +118,37 @@ const Scene = ({
         color="#000000"
       />
       
-      {/* DISPLAY STAND - STRICTLY AT y=0.3 */}
+      {/* ============================================
+          DISPLAY STAND - Fixed position
+          ============================================ */}
+      
       <DisplayStand 
         position={[0, 0.7, 0]}
         scale={0.7}
       />
       
-      {/* MANNEQUIN - POSITIONED AT standHeight - 0.2 */}
+      {/* ============================================
+          MORPHABLE MANNEQUIN
+          ============================================ */}
+      
       <MorphableMannequin 
         measurements={measurements}
         autoRotate={autoRotate}
         standHeight={standHeight - 0.2}
       />
       
-      {/* CAMERA CONTROLS */}
+      {/* ============================================
+          HYBRID GARMENT - Rendered when available
+          ============================================ */}
+      
+      {garmentData && showGarment && (
+        <HybridGarment garmentData={garmentData} />
+      )}
+      
+      {/* ============================================
+          CAMERA CONTROLS
+          ============================================ */}
+      
       <OrbitControls 
         enablePan={false}
         enableZoom={true}
