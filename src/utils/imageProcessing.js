@@ -1,65 +1,104 @@
+// 1. src/utils/imageProcessing.js
+import * as tf from '@tensorflow/tfjs';
 import { removeBackground } from '@imgly/background-removal';
 
-export const loadImage = (file) => {
+export async function loadImage(file) {
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.crossOrigin = 'anonymous';
-    img.src = URL.createObjectURL(file);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
   });
-};
+}
 
-export const removeImageBackground = async (imageFile) => {
+export async function removeImageBackground(file) {
   try {
-    console.log(' Removing background...');
-    const blob = await removeBackground(imageFile);
+    console.log('🖼️ Removing background...');
+    
+    // Use @imgly/background-removal
+    const blob = await removeBackground(file, {
+      output: { format: 'image/png', quality: 0.9 }
+    });
+    
+    // Convert blob to URL
     const url = URL.createObjectURL(blob);
     console.log(' Background removed');
     return url;
   } catch (error) {
     console.error(' Background removal failed:', error);
     // Fallback: return original image
-    return URL.createObjectURL(imageFile);
+    return URL.createObjectURL(file);
   }
-};
+}
 
-export const applyDepthDisplacement = (mesh, depthMap, depthService) => {
-  const geometry = mesh.geometry;
+export function applyDepthDisplacement(mesh, depthMap, depthEstimator) {
+  if (!mesh.geometry) return;
   
-  if (!geometry.attributes.position || !geometry.attributes.uv || !geometry.attributes.normal) {
-    console.warn(' Geometry missing required attributes');
+  const geometry = mesh.geometry;
+  const positions = geometry.attributes.position;
+  const uvs = geometry.attributes.uv;
+  
+  if (!uvs) {
+    console.warn(' Mesh has no UV coordinates, skipping displacement');
     return;
   }
   
-  const positions = geometry.attributes.position;
-  const uvs = geometry.attributes.uv;
-  const normals = geometry.attributes.normal;
+  console.log(' Applying depth displacement...');
   
-  const displacementScale = 0.05; // Adjust for more/less depth effect
-  
+  // Apply depth-based displacement to vertices
   for (let i = 0; i < positions.count; i++) {
     const u = uvs.getX(i);
     const v = uvs.getY(i);
     
     // Sample depth at this UV coordinate
-    const depth = depthService.sampleDepthMap(depthMap, u, v);
+    const depth = depthEstimator.sampleDepthMap(depthMap, u, v);
     
-    // Calculate displacement (center around 0.5)
+    // Get vertex normal
+    const vx = positions.getX(i);
+    const vy = positions.getY(i);
+    const vz = positions.getZ(i);
+    
+    // Get normal (simplified - assumes normals exist)
+    const normal = geometry.attributes.normal;
+    const nx = normal ? normal.getX(i) : 0;
+    const ny = normal ? normal.getY(i) : 0;
+    const nz = normal ? normal.getZ(i) : 1;
+    
+    // Displace along normal based on depth
+    const displacementScale = 0.05; // Adjust for desired effect
     const displacement = (depth - 0.5) * displacementScale;
     
-    // Move vertex along its normal
-    const nx = normals.getX(i);
-    const ny = normals.getY(i);
-    const nz = normals.getZ(i);
-    
-    const x = positions.getX(i) + nx * displacement;
-    const y = positions.getY(i) + ny * displacement;
-    const z = positions.getZ(i) + nz * displacement;
-    
-    positions.setXYZ(i, x, y, z);
+    positions.setXYZ(
+      i,
+      vx + nx * displacement,
+      vy + ny * displacement,
+      vz + nz * displacement
+    );
   }
   
   positions.needsUpdate = true;
   geometry.computeVertexNormals();
-};
+  
+  console.log('Depth displacement applied');
+}
+
+export function createCanvasTexture(imageUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas);
+    };
+    img.src = imageUrl;
+  });
+}
