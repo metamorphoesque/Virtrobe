@@ -3,14 +3,13 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import depthEstimation from './depthEstimation';
 import garmentClassifier from './garmentClassifier';
-import templateMatcher from './templateMatcher';
+import templateMatcher from './templateMatcher'; // ← Make sure this is imported
 import { 
   loadImage, 
-  removeImageBackground, 
+  removeImageBackgroundDev, 
   applyDepthDisplacement 
 } from '../utils/imageProcessing';
 import { generateMeshFromDepth } from '../utils/meshGeneration';
-
 class HybridGarmentGenerator {
   constructor() {
     this.loader = new GLTFLoader();
@@ -52,7 +51,7 @@ class HybridGarmentGenerator {
                   `(${(classification.confidence * 100).toFixed(0)}% confidence)`);
       
       // STEP 3: Remove background
-      const cleanImageUrl = await removeImageBackground(imageFile);
+      const cleanImageUrl = await removeImageBackgroundDev(imageFile);  // 
       console.log(' Background removed');
       
       // STEP 4: Estimate depth
@@ -69,39 +68,79 @@ class HybridGarmentGenerator {
         userMeasurements.gender
       );
       
-      if (template && classification.confidence > 0.5) {
-        // ============================================
-        // TEMPLATE-BASED: Template found and confidence is decent
-        // ============================================
-        console.log(' Using TEMPLATE-BASED generation');
-        method = 'hybrid-template';
         
-        garmentMesh = template; // templateMatcher already returns a clone
-        
-        // Apply depth displacement to template for realistic wrinkles/folds
-        applyDepthDisplacement(garmentMesh, depthMap, depthEstimation);
-        
-        // Create textures
-        const depthCanvas = depthEstimation.createDepthTexture(depthMap);
-        const depthTexture = new THREE.CanvasTexture(depthCanvas);
-        const colorTexture = new THREE.TextureLoader().load(cleanImageUrl);
-        
-        // Enhanced material with depth details
-        garmentMesh.material = new THREE.MeshStandardMaterial({
-          map: colorTexture,
-          displacementMap: depthTexture,
-          displacementScale: 0.02,
-          normalMap: depthTexture,
-          normalScale: new THREE.Vector2(0.25, 0.25),
-          roughness: 0.85,
-          metalness: 0.05,
-          side: THREE.DoubleSide,
-          transparent: true
-        });
-        
-        console.log(' Template enhanced with depth details');
-        
-      } else {
+        if (template && classification.confidence > 0.5) {
+          console.log('📐 Using TEMPLATE-BASED generation');
+          method = 'hybrid-template';
+          
+          garmentMesh = template;
+          
+          // DEBUG: Check template structure
+          console.log('🔍 Template info:', {
+            type: garmentMesh.type,
+            isMesh: garmentMesh.isMesh,
+            hasChildren: garmentMesh.children?.length > 0,
+            materialType: garmentMesh.material?.type
+          });
+          
+          // STEP 1: Load user's texture (WAIT for it!)
+          console.log('🖼️ Loading texture from uploaded image...');
+          const colorTexture = await new Promise((resolve, reject) => {
+            const loader = new THREE.TextureLoader();
+            loader.load(
+              cleanImageUrl,
+              (texture) => {
+                console.log('✅ Texture loaded:', texture.image.width, 'x', texture.image.height);
+                resolve(texture);
+              },
+              undefined,
+              (error) => {
+                console.error('❌ Texture load failed:', error);
+                reject(error);
+              }
+            );
+          });
+          
+          // STEP 2: Create depth texture
+          const depthCanvas = depthEstimation.createDepthTexture(depthMap);
+          const depthTexture = new THREE.CanvasTexture(depthCanvas);
+          depthTexture.needsUpdate = true;
+          
+          console.log('✅ Depth texture created');
+          
+          // STEP 3: Apply depth displacement
+          applyDepthDisplacement(garmentMesh, depthMap, depthEstimation);
+          
+          // STEP 4: Apply material with texture to ALL meshes
+          let meshCount = 0;
+          garmentMesh.traverse((child) => {
+            if (child.isMesh) {
+              meshCount++;
+              console.log(`🎨 Applying material to mesh ${meshCount}:`, child.name || 'unnamed');
+              
+              // Create new material with user's texture
+              child.material = new THREE.MeshStandardMaterial({
+                map: colorTexture,
+                displacementMap: depthTexture,
+                displacementScale: 0.02,
+                normalMap: depthTexture,
+                normalScale: new THREE.Vector2(0.25, 0.25),
+                roughness: 0.85,
+                metalness: 0.05,
+                side: THREE.DoubleSide,
+                transparent: true,
+                alphaTest: 0.1
+              });
+              
+              child.material.needsUpdate = true;
+              child.castShadow = true;
+              child.receiveShadow = true;
+            }
+          });
+          
+          console.log(`✅ Applied texture to ${meshCount} mesh(es)`);
+          console.log('✅ Template enhancement complete');
+        } else  {
         // ============================================
         // PROCEDURAL: No template or low confidence
         // ============================================
