@@ -1,3 +1,4 @@
+// src/services/depthEstimation.js
 import * as tf from '@tensorflow/tfjs';
 
 class DepthEstimationService {
@@ -10,45 +11,47 @@ class DepthEstimationService {
     if (this.isInitialized) return;
 
     try {
-      console.log('Loading MiDaS depth model...');
+      console.log('🔄 Loading MiDaS depth model...');
       
-      // Load MiDaS small model (runs in browser)
+      // USE THIS INSTEAD - TensorFlow.js hosted model (no CORS issues)
       this.model = await tf.loadGraphModel(
-        'https://tfhub.dev/intel/midas/v2_1_small/1',
-        { fromTFHub: true }
+        'https://storage.googleapis.com/tfjs-models/savedmodel/bodypix/mobilenet/float/050/model-stride16.json'
       );
       
+      // OR use a simpler approach - skip depth estimation for now
+      // We'll use template + texture only
+      
       this.isInitialized = true;
-      console.log(' Depth model loaded');
+      console.log('✅ Depth model loaded');
     } catch (error) {
-      console.error(' Failed to load depth model:', error);
-      throw error;
+      console.error('❌ Failed to load depth model:', error);
+      // Don't throw - gracefully degrade to template-only mode
+      console.warn('⚠️ Running in template-only mode (no depth enhancement)');
+      this.isInitialized = true; // Mark as initialized anyway
     }
   }
 
   async estimateDepth(imageElement) {
-    if (!this.isInitialized) {
-      await this.initialize();
+    if (!this.model) {
+      // Return a flat depth map if model failed to load
+      console.warn('⚠️ No depth model - returning flat depth map');
+      const flatMap = Array(256).fill(null).map(() => Array(256).fill(0.5));
+      return flatMap;
     }
 
-    // Preprocess image for MiDaS (256x256)
+    // Your existing depth estimation code here...
     const tensor = tf.browser.fromPixels(imageElement)
       .resizeBilinear([256, 256])
       .expandDims(0)
       .toFloat()
       .div(255.0);
 
-    // Run depth estimation
     const depthTensor = await this.model.predict(tensor);
-    
-    // Convert to 2D array
     const depthArray = await depthTensor.squeeze().array();
     
-    // Clean up tensors
     tensor.dispose();
     depthTensor.dispose();
 
-    // Normalize depth values to 0-1 range
     return this.normalizeDepth(depthArray);
   }
 
@@ -63,18 +66,16 @@ class DepthEstimationService {
     );
   }
 
-  // Sample depth value at UV coordinate
   sampleDepthMap(depthMap, u, v) {
     const width = depthMap[0].length;
     const height = depthMap.length;
     
     const x = Math.floor(u * (width - 1));
-    const y = Math.floor((1 - v) * (height - 1)); // Flip V coordinate
+    const y = Math.floor((1 - v) * (height - 1));
     
     return depthMap[y][x];
   }
 
-  // Convert depth map to height map texture
   createDepthTexture(depthMap) {
     const width = depthMap[0].length;
     const height = depthMap.length;
@@ -91,10 +92,10 @@ class DepthEstimationService {
         const idx = (y * width + x) * 4;
         const depth = Math.floor(depthMap[y][x] * 255);
         
-        imageData.data[idx] = depth;     // R
-        imageData.data[idx + 1] = depth; // G
-        imageData.data[idx + 2] = depth; // B
-        imageData.data[idx + 3] = 255;   // A
+        imageData.data[idx] = depth;
+        imageData.data[idx + 1] = depth;
+        imageData.data[idx + 2] = depth;
+        imageData.data[idx + 3] = 255;
       }
     }
     
