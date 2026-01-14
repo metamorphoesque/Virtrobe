@@ -1,4 +1,5 @@
-// src/services/depthEstimation.js
+// src/services/depthEstimation.js (FIXED)
+// ============================================
 import * as tf from '@tensorflow/tfjs';
 
 class DepthEstimationService {
@@ -13,46 +14,150 @@ class DepthEstimationService {
     try {
       console.log('🔄 Loading MiDaS depth model...');
       
-      // USE THIS INSTEAD - TensorFlow.js hosted model (no CORS issues)
-      this.model = await tf.loadGraphModel(
-        'https://storage.googleapis.com/tfjs-models/savedmodel/bodypix/mobilenet/float/050/model-stride16.json'
-      );
+      // Use MobileNet as a simpler alternative for now
+      // MiDaS model from TFHub has compatibility issues
+      // We'll use a simpler depth estimation approach
       
-      // OR use a simpler approach - skip depth estimation for now
-      // We'll use template + texture only
-      
+      // For now, we'll use a simplified depth estimation
+      // based on image brightness and edges
       this.isInitialized = true;
-      console.log('✅ Depth model loaded');
+      console.log('✅ Depth estimator ready (simplified mode)');
+      
     } catch (error) {
       console.error('❌ Failed to load depth model:', error);
-      // Don't throw - gracefully degrade to template-only mode
-      console.warn('⚠️ Running in template-only mode (no depth enhancement)');
-      this.isInitialized = true; // Mark as initialized anyway
+      this.isInitialized = true; // Continue with fallback
     }
   }
 
   async estimateDepth(imageElement) {
-    if (!this.model) {
-      // Return a flat depth map if model failed to load
-      console.warn('⚠️ No depth model - returning flat depth map');
-      const flatMap = Array(256).fill(null).map(() => Array(256).fill(0.5));
-      return flatMap;
+    if (!this.isInitialized) {
+      await this.initialize();
     }
 
-    // Your existing depth estimation code here...
-    const tensor = tf.browser.fromPixels(imageElement)
-      .resizeBilinear([256, 256])
-      .expandDims(0)
-      .toFloat()
-      .div(255.0);
+    console.log('🗺️ Estimating depth (simplified algorithm)...');
 
-    const depthTensor = await this.model.predict(tensor);
-    const depthArray = await depthTensor.squeeze().array();
+    // Create canvas for processing
+    const canvas = document.createElement('canvas');
+    const targetSize = 256;
+    canvas.width = targetSize;
+    canvas.height = targetSize;
+    const ctx = canvas.getContext('2d');
     
-    tensor.dispose();
-    depthTensor.dispose();
+    // Draw and resize image
+    ctx.drawImage(imageElement, 0, 0, targetSize, targetSize);
+    const imageData = ctx.getImageData(0, 0, targetSize, targetSize);
+    
+    // Simplified depth estimation using brightness + edge detection
+    const depthMap = this.simplifiedDepthEstimation(imageData);
+    
+    console.log('✅ Depth map generated:', depthMap.length, 'x', depthMap[0].length);
+    
+    return depthMap;
+  }
 
-    return this.normalizeDepth(depthArray);
+  simplifiedDepthEstimation(imageData) {
+    const width = imageData.width;
+    const height = imageData.height;
+    const data = imageData.data;
+    
+    // Create depth map array
+    const depthMap = [];
+    
+    for (let y = 0; y < height; y++) {
+      const row = [];
+      for (let x = 0; x < width; x++) {
+        const idx = (y * width + x) * 4;
+        const r = data[idx];
+        const g = data[idx + 1];
+        const b = data[idx + 2];
+        const a = data[idx + 3];
+        
+        // Skip transparent pixels (background)
+        if (a < 50) {
+          row.push(0);
+          continue;
+        }
+        
+        // Calculate brightness (simple depth heuristic)
+        const brightness = (r + g + b) / 3;
+        
+        // Calculate edge strength (high edges = foreground)
+        const edgeStrength = this.getEdgeStrength(data, x, y, width, height);
+        
+        // Combine brightness and edges for depth
+        // Brighter + more edges = closer (higher depth)
+        const depth = (brightness / 255) * 0.7 + (edgeStrength / 255) * 0.3;
+        
+        row.push(depth);
+      }
+      depthMap.push(row);
+    }
+    
+    // Smooth the depth map
+    return this.smoothDepthMap(depthMap);
+  }
+
+  getEdgeStrength(data, x, y, width, height) {
+    // Sobel edge detection
+    if (x === 0 || x === width - 1 || y === 0 || y === height - 1) {
+      return 0;
+    }
+    
+    const getPixelBrightness = (px, py) => {
+      const idx = (py * width + px) * 4;
+      return (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+    };
+    
+    // Sobel kernels
+    const gx = 
+      -1 * getPixelBrightness(x - 1, y - 1) +
+       1 * getPixelBrightness(x + 1, y - 1) +
+      -2 * getPixelBrightness(x - 1, y) +
+       2 * getPixelBrightness(x + 1, y) +
+      -1 * getPixelBrightness(x - 1, y + 1) +
+       1 * getPixelBrightness(x + 1, y + 1);
+    
+    const gy =
+      -1 * getPixelBrightness(x - 1, y - 1) +
+      -2 * getPixelBrightness(x, y - 1) +
+      -1 * getPixelBrightness(x + 1, y - 1) +
+       1 * getPixelBrightness(x - 1, y + 1) +
+       2 * getPixelBrightness(x, y + 1) +
+       1 * getPixelBrightness(x + 1, y + 1);
+    
+    return Math.sqrt(gx * gx + gy * gy);
+  }
+
+  smoothDepthMap(depthMap) {
+    const height = depthMap.length;
+    const width = depthMap[0].length;
+    const smoothed = [];
+    
+    for (let y = 0; y < height; y++) {
+      const row = [];
+      for (let x = 0; x < width; x++) {
+        // 3x3 average smoothing
+        let sum = 0;
+        let count = 0;
+        
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const ny = y + dy;
+            const nx = x + dx;
+            
+            if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
+              sum += depthMap[ny][nx];
+              count++;
+            }
+          }
+        }
+        
+        row.push(sum / count);
+      }
+      smoothed.push(row);
+    }
+    
+    return smoothed;
   }
 
   normalizeDepth(depthArray) {
@@ -61,11 +166,14 @@ class DepthEstimationService {
     const max = Math.max(...flat);
     const range = max - min;
 
+    if (range === 0) return depthArray;
+
     return depthArray.map(row => 
       row.map(value => (value - min) / range)
     );
   }
 
+  // Sample depth value at UV coordinate
   sampleDepthMap(depthMap, u, v) {
     const width = depthMap[0].length;
     const height = depthMap.length;
@@ -73,9 +181,14 @@ class DepthEstimationService {
     const x = Math.floor(u * (width - 1));
     const y = Math.floor((1 - v) * (height - 1));
     
-    return depthMap[y][x];
+    // Clamp to valid range
+    const clampedX = Math.max(0, Math.min(width - 1, x));
+    const clampedY = Math.max(0, Math.min(height - 1, y));
+    
+    return depthMap[clampedY][clampedX];
   }
 
+  // Convert depth map to height map texture
   createDepthTexture(depthMap) {
     const width = depthMap[0].length;
     const height = depthMap.length;
@@ -92,10 +205,10 @@ class DepthEstimationService {
         const idx = (y * width + x) * 4;
         const depth = Math.floor(depthMap[y][x] * 255);
         
-        imageData.data[idx] = depth;
-        imageData.data[idx + 1] = depth;
-        imageData.data[idx + 2] = depth;
-        imageData.data[idx + 3] = 255;
+        imageData.data[idx] = depth;     // R
+        imageData.data[idx + 1] = depth; // G
+        imageData.data[idx + 2] = depth; // B
+        imageData.data[idx + 3] = 255;   // A
       }
     }
     
