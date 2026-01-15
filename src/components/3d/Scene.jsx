@@ -1,10 +1,10 @@
-// src/components/3d/Scene.jsx (UPDATED WITH FULL PHYSICS)
+// src/components/3d/Scene.jsx (UNIFIED SYSTEM)
+// Single rendering path: HybridGarment handles everything
 import React, { useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Environment, ContactShadows, Grid, useGLTF } from '@react-three/drei';
 import MorphableMannequin from './MorphableMannequin';
 import HybridGarment from './HybridGarment';
-import ClothSimulation from './ClothSimulation';
 import { useClothPhysics } from '../../hooks/useClothPhysics';
 
 // Display Stand Component
@@ -45,25 +45,17 @@ const SceneContent = ({
   
   const standHeight = calculateStandHeight();
   
-  // Initialize cloth physics
+  // Initialize cloth physics (always, but only enabled when needed)
   const clothPhysics = useClothPhysics({ 
-    enabled: enableClothPhysics 
+    enabled: enableClothPhysics && showGarment 
   });
-  
-  // Create mannequin collider when measurements change
-  React.useEffect(() => {
-    if (enableClothPhysics && clothPhysics.createMannequinCollider) {
-      clothPhysics.createMannequinCollider(measurements);
-    }
-  }, [measurements, enableClothPhysics, clothPhysics]);
-
-  // Extract garment texture and color
-  const garmentTexture = garmentData?.texture || null;
-  const garmentDisplayColor = garmentData?.dominantColor || garmentColor;
 
   return (
     <>
-      {/* LIGHTING SETUP */}
+      {/* ============================================
+          LIGHTING SETUP - Minimalist & Clean
+          ============================================ */}
+      
       <ambientLight intensity={0.6} />
       
       <spotLight 
@@ -81,10 +73,13 @@ const SceneContent = ({
       <pointLight position={[-2, 1, -2]} intensity={0.2} />
       <pointLight position={[2, 1, -2]} intensity={0.2} />
       
-      {/* ENVIRONMENT */}
+      {/* ============================================
+          ENVIRONMENT & BACKGROUND
+          ============================================ */}
+      
       <Environment preset="studio" />
       
-      {/* FLOOR */}
+      {/* SLEEK DARK MINIMALIST FLOOR */}
       <mesh 
         rotation={[-Math.PI / 2, 0, 0]} 
         position={[0, 0, 0]} 
@@ -98,6 +93,7 @@ const SceneContent = ({
         />
       </mesh>
       
+      {/* Subtle grid overlay */}
       <Grid 
         args={[20, 20]} 
         cellSize={0.5} 
@@ -108,6 +104,7 @@ const SceneContent = ({
         position={[0, 0.01, 0]}
       />
       
+      {/* Contact shadows */}
       <ContactShadows 
         position={[0, 0.01, 0]} 
         opacity={0.4} 
@@ -117,45 +114,68 @@ const SceneContent = ({
         color="#000000"
       />
       
-      {/* DISPLAY STAND */}
+      {/* ============================================
+          DISPLAY STAND - Fixed position
+          ============================================ */}
+      
       <DisplayStand 
         position={[0, 0.7, 0]}
         scale={0.7}
       />
       
-      {/* MORPHABLE MANNEQUIN */}
+      {/* ============================================
+          MORPHABLE MANNEQUIN
+          ============================================ */}
+      
       <MorphableMannequin 
         ref={mannequinRef}
         measurements={measurements}
-        autoRotate={autoRotate && !enableClothPhysics}
+        autoRotate={autoRotate && !enableClothPhysics && !showGarment}
         standHeight={standHeight - 0.2}
       />
       
-      {/* CLOTH PHYSICS SIMULATION */}
-      {enableClothPhysics && showGarment && (
-        <ClothSimulation
-          clothPhysics={clothPhysics}
-          width={0.8}
-          height={1.2}
-          segmentsX={20}
-          segmentsY={30}
-          color={garmentDisplayColor}
-          texture={garmentTexture}
-          visible={true}
-          position={[0, 1.8, 0.1]}
-          enableWind={true}
-        />
-      )}
+      {/* ============================================
+          UNIFIED GARMENT RENDERING
+          Single component handles both modes:
+          - Physics OFF: Static depth-deformed template
+          - Physics ON: Dynamic cloth simulation
+          ============================================ */}
       
-      {/* HYBRID GARMENT - When physics is OFF */}
-      {!enableClothPhysics && garmentData && showGarment && (
+      {showGarment && garmentData && (
         <HybridGarment 
           garmentData={garmentData}
+          measurements={measurements}
+          clothPhysics={clothPhysics}
           autoRotate={autoRotate}
+          enablePhysics={enableClothPhysics}
+          position={[0, 0, 0]}
         />
       )}
       
-      {/* CAMERA CONTROLS */}
+      {/* ============================================
+          DEBUG VISUALIZATION
+          ============================================ */}
+      
+      {garmentData && (
+        <>
+          {/* Physics status indicator */}
+          <mesh position={[-1.5, 2, 0]} visible={false}>
+            <boxGeometry args={[0.1, 0.1, 0.1]} />
+            <meshBasicMaterial color={enableClothPhysics ? "#00ff00" : "#ff0000"} />
+          </mesh>
+          
+          {/* Garment type label */}
+          <mesh position={[1.5, 2, 0]} visible={false}>
+            <sphereGeometry args={[0.05]} />
+            <meshBasicMaterial color="#0000ff" />
+          </mesh>
+        </>
+      )}
+      
+      {/* ============================================
+          CAMERA CONTROLS
+          ============================================ */}
+      
       <OrbitControls 
         enablePan={false}
         enableZoom={true}
@@ -166,7 +186,7 @@ const SceneContent = ({
         target={[0, 1, 0]}
         enableDamping={true}
         dampingFactor={0.05}
-        enabled={!enableClothPhysics} // Disable manual rotation during physics
+        enabled={!enableClothPhysics} // Disable orbit when physics is on to avoid conflicts
       />
     </>
   );
@@ -181,6 +201,11 @@ const Scene = (props) => {
       }}
       shadows
       style={{ background: '#fafafa' }}
+      gl={{ 
+        antialias: true,
+        alpha: false,
+        preserveDrawingBuffer: true
+      }}
     >
       <SceneContent {...props} />
     </Canvas>

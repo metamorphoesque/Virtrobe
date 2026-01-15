@@ -1,9 +1,10 @@
 // IMPROVED: src/services/garmentClassifier.js
+// Added tank top detection
 // ============================================
 
 class GarmentClassifierService {
   constructor() {
-    this.categories = ['tshirt', 'dress', 'pants', 'skirt', 'shorts', 'shirt'];
+    this.categories = ['tshirt', 'tanktop', 'dress', 'pants', 'skirt', 'shorts', 'shirt'];
   }
 
   async classify(imageElement) {
@@ -24,12 +25,18 @@ class GarmentClassifierService {
     // Analyze vertical distribution (where is most content?)
     const verticalDist = this.getVerticalDistribution(imageData);
     
+    // CRITICAL: Detect if garment has sleeves
+    const sleeveAnalysis = this.analyzeSleevePresence(imageData);
+    
     console.log('📊 Classification metrics:', {
       aspectRatio: aspectRatio.toFixed(2),
       avgBrightness: avgBrightness.toFixed(0),
       colorfulness: colorfulness.toFixed(2),
       topHeavy: verticalDist.topHeavy,
-      centerHeavy: verticalDist.centerHeavy
+      centerHeavy: verticalDist.centerHeavy,
+      leftEdge: sleeveAnalysis.leftEdge.toFixed(2),
+      rightEdge: sleeveAnalysis.rightEdge.toFixed(2),
+      hasSleeves: sleeveAnalysis.hasSleeves
     });
     
     // IMPROVED CLASSIFICATION LOGIC
@@ -53,23 +60,29 @@ class GarmentClassifierService {
       }
     }
     
-    // Medium/square aspect ratio = tops
-    if (aspectRatio >= 0.7 && aspectRatio <= 1.3) {
-      // Check if it has sleeves (content on sides)
-      const hasSleeves = this.detectSleeves(imageData);
+    // Medium/square aspect ratio = tops (CRITICAL SECTION)
+    if (aspectRatio >= 0.6 && aspectRatio <= 1.4) {
+      // TANK TOP DETECTION: No content on sides = sleeveless
+      if (!sleeveAnalysis.hasSleeves) {
+        console.log('🎯 Detected TANK TOP (no sleeves)');
+        return { type: 'tanktop', confidence: 0.85 };
+      }
       
-      if (hasSleeves && colorfulness < 50) {
-        // Button-up shirts tend to be less colorful
+      // Has sleeves - determine t-shirt vs button-up
+      if (sleeveAnalysis.hasSleeves && colorfulness < 50 && avgBrightness > 180) {
+        // Button-up shirts tend to be less colorful and lighter
         return { type: 'shirt', confidence: 0.70 };
       } else {
-        // Most tops are t-shirts
+        // Most tops with sleeves are t-shirts
         return { type: 'tshirt', confidence: 0.75 };
       }
     }
     
     // Tall but not too tall = top or skirt
-    if (aspectRatio < 0.7) {
-      if (verticalDist.topHeavy) {
+    if (aspectRatio < 0.6) {
+      if (verticalDist.topHeavy && !sleeveAnalysis.hasSleeves) {
+        return { type: 'tanktop', confidence: 0.70 };
+      } else if (verticalDist.topHeavy) {
         return { type: 'tshirt', confidence: 0.65 };
       } else {
         return { type: 'skirt', confidence: 0.65 };
@@ -78,6 +91,58 @@ class GarmentClassifierService {
     
     // Default fallback
     return { type: 'tshirt', confidence: 0.50 };
+  }
+
+  /**
+   * CRITICAL: Analyze sleeve presence
+   * This determines tank top vs t-shirt
+   */
+  analyzeSleevePresence(imageData) {
+    const width = Math.sqrt(imageData.data.length / 4);
+    const height = width;
+    
+    // Define regions to check for sleeves
+    const shoulderY = Math.floor(height * 0.15); // Top 15%
+    const midY = Math.floor(height * 0.45); // Middle torso
+    
+    let leftEdgeContent = 0;
+    let rightEdgeContent = 0;
+    let leftEdgePixels = 0;
+    let rightEdgePixels = 0;
+    
+    // Sample multiple horizontal lines
+    for (let y = shoulderY; y < midY; y += 2) {
+      // Left edge (outer 15%)
+      for (let x = 0; x < Math.floor(width * 0.2); x++) {
+        const idx = (y * width + x) * 4;
+        leftEdgePixels++;
+        if (imageData.data[idx + 3] > 50) { // Has content
+          leftEdgeContent++;
+        }
+      }
+      
+      // Right edge (outer 15%)
+      for (let x = Math.floor(width * 0.8); x < width; x++) {
+        const idx = (y * width + x) * 4;
+        rightEdgePixels++;
+        if (imageData.data[idx + 3] > 50) { // Has content
+          rightEdgeContent++;
+        }
+      }
+    }
+    
+    const leftRatio = leftEdgeContent / leftEdgePixels;
+    const rightRatio = rightEdgeContent / rightEdgePixels;
+    
+    // If both sides have substantial content, it has sleeves
+    const sleeveThreshold = 0.15; // At least 15% coverage
+    const hasSleeves = leftRatio > sleeveThreshold && rightRatio > sleeveThreshold;
+    
+    return {
+      leftEdge: leftRatio,
+      rightEdge: rightRatio,
+      hasSleeves: hasSleeves
+    };
   }
 
   getAverageBrightness(imageData) {
@@ -158,35 +223,6 @@ class GarmentClassifierService {
       centerHeavy: centerAvg > topAvg && centerAvg > bottomAvg,
       bottomHeavy: bottomAvg > topAvg && bottomAvg > centerAvg
     };
-  }
-
-  detectSleeves(imageData) {
-    // Simple sleeve detection: check if there's content on left/right edges
-    const width = Math.sqrt(imageData.data.length / 4);
-    const height = width;
-    
-    let leftEdgeContent = 0;
-    let rightEdgeContent = 0;
-    
-    for (let y = Math.floor(height * 0.2); y < Math.floor(height * 0.6); y++) {
-      // Left edge
-      for (let x = 0; x < Math.floor(width * 0.15); x++) {
-        const idx = (y * width + x) * 4;
-        if (imageData.data[idx + 3] > 50) {
-          leftEdgeContent++;
-        }
-      }
-      
-      // Right edge
-      for (let x = Math.floor(width * 0.85); x < width; x++) {
-        const idx = (y * width + x) * 4;
-        if (imageData.data[idx + 3] > 50) {
-          rightEdgeContent++;
-        }
-      }
-    }
-    
-    return leftEdgeContent > 50 && rightEdgeContent > 50;
   }
 }
 
