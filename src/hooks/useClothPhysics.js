@@ -1,231 +1,251 @@
-// 1. src/hooks/useClothPhysics.js
-// ============================================
-import { useEffect, useRef } from 'react';
+// src/hooks/useClothPhysics.js
+import { useRef, useEffect } from 'react';
 import * as CANNON from 'cannon-es';
 
-export const useClothPhysics = ({ enabled = true }) => {
+export const useClothPhysics = ({ enabled = false }) => {
   const worldRef = useRef(null);
-  const clothBodiesRef = useRef([]);
-  const mannequinBodyRef = useRef(null);
-  
-  // Initialize physics world
+  const clothBodyRef = useRef(null);
+  const particlesRef = useRef([]);
+  const constraintsRef = useRef([]);
+  const mannequinBodiesRef = useRef([]);
+
   useEffect(() => {
     if (!enabled) return;
-    
-    // Create physics world
+
+    // Initialize CANNON.js physics world
     const world = new CANNON.World();
-    world.gravity.set(0, -9.82, 0); // Earth gravity
+    world.gravity.set(0, -9.82, 0);
     world.broadphase = new CANNON.NaiveBroadphase();
     world.solver.iterations = 10;
-    world.solver.tolerance = 0.001;
-    
-    // Add damping for stability
-    world.defaultContactMaterial.contactEquationStiffness = 1e6;
+    world.defaultContactMaterial.contactEquationStiffness = 1e8;
     world.defaultContactMaterial.contactEquationRelaxation = 3;
     
     worldRef.current = world;
-    
-    console.log('🌍 Physics world initialized');
-    
+
     return () => {
       // Cleanup
       if (worldRef.current) {
         worldRef.current.bodies.forEach(body => {
           worldRef.current.removeBody(body);
         });
+        constraintsRef.current.forEach(constraint => {
+          worldRef.current.removeConstraint(constraint);
+        });
       }
     };
   }, [enabled]);
-  
-  // Create cloth particle grid
-  const createClothGrid = (width, height, segmentsX, segmentsY, position = [0, 2, 0]) => {
-    if (!worldRef.current) {
-      console.warn(' Physics world not initialized');
-      return null;
-    }
-    
+
+  const createClothBody = (width, height, segmentsX, segmentsY, position) => {
+    if (!worldRef.current) return null;
+
     const particles = [];
     const constraints = [];
-    const particleMass = 0.1;
-    const clothStiffness = 100;
-    const clothDamping = 0.1;
-    
+    const mass = 0.1;
+    const distance = width / segmentsX;
+
     // Create particle grid
-    for (let y = 0; y <= segmentsY; y++) {
-      for (let x = 0; x <= segmentsX; x++) {
-        const u = x / segmentsX;
-        const v = y / segmentsY;
-        
-        const particlePosition = new CANNON.Vec3(
-          position[0] + (u - 0.5) * width,
-          position[1] - v * height,
-          position[2]
-        );
-        
+    for (let i = 0; i <= segmentsY; i++) {
+      for (let j = 0; j <= segmentsX; j++) {
+        const x = (j - segmentsX / 2) * distance;
+        const y = -i * distance;
+        const z = 0;
+
         const particle = new CANNON.Body({
-          mass: particleMass,
-          position: particlePosition,
-          shape: new CANNON.Particle()
+          mass: i === 0 ? 0 : mass, // Top row is fixed
+          shape: new CANNON.Particle(),
+          position: new CANNON.Vec3(
+            position[0] + x,
+            position[1] + y,
+            position[2] + z
+          ),
+          linearDamping: 0.5,
+          angularDamping: 0.5
         });
-        
-        // Pin top corners (make them static)
-        if (y === 0 && (x === 0 || x === segmentsX)) {
-          particle.mass = 0; // Static particles
-          particle.type = CANNON.Body.STATIC;
-        }
-        
+
         worldRef.current.addBody(particle);
         particles.push(particle);
       }
     }
-    
-    // Create constraints (springs) between particles
-    const connect = (i1, i2) => {
+
+    // Create distance constraints (springs between particles)
+    const connect = (i1, i2, distance) => {
       const constraint = new CANNON.DistanceConstraint(
         particles[i1],
         particles[i2],
-        particles[i1].position.distanceTo(particles[i2].position),
-        clothStiffness
+        distance,
+        1e6 // stiffness
       );
       worldRef.current.addConstraint(constraint);
       constraints.push(constraint);
     };
-    
-    // Structural constraints (horizontal and vertical)
-    for (let y = 0; y <= segmentsY; y++) {
-      for (let x = 0; x <= segmentsX; x++) {
-        const idx = y * (segmentsX + 1) + x;
+
+    // Horizontal and vertical constraints
+    for (let i = 0; i <= segmentsY; i++) {
+      for (let j = 0; j <= segmentsX; j++) {
+        const index = i * (segmentsX + 1) + j;
         
-        // Connect to right neighbor
-        if (x < segmentsX) {
-          connect(idx, idx + 1);
+        // Horizontal
+        if (j < segmentsX) {
+          connect(index, index + 1, distance);
         }
         
-        // Connect to bottom neighbor
-        if (y < segmentsY) {
-          connect(idx, idx + (segmentsX + 1));
+        // Vertical
+        if (i < segmentsY) {
+          connect(index, index + segmentsX + 1, distance);
+        }
+        
+        // Diagonal (for shear resistance)
+        if (i < segmentsY && j < segmentsX) {
+          connect(index, index + segmentsX + 2, distance * Math.sqrt(2));
+          connect(index + 1, index + segmentsX + 1, distance * Math.sqrt(2));
         }
       }
     }
-    
-    // Shear constraints (diagonals for stability)
-    for (let y = 0; y < segmentsY; y++) {
-      for (let x = 0; x < segmentsX; x++) {
-        const idx = y * (segmentsX + 1) + x;
-        connect(idx, idx + (segmentsX + 1) + 1); // Bottom-right diagonal
-        connect(idx + 1, idx + (segmentsX + 1)); // Bottom-left diagonal
-      }
-    }
-    
-    clothBodiesRef.current.push({ particles, constraints, segmentsX, segmentsY });
-    
-    console.log(` Cloth grid created: ${segmentsX}x${segmentsY} (${particles.length} particles)`);
-    
-    return { particles, constraints, segmentsX, segmentsY };
+
+    particlesRef.current = particles;
+    constraintsRef.current = constraints;
+
+    return { particles, constraints };
   };
-  
-  // Create mannequin collision body
+
   const createMannequinCollider = (measurements) => {
     if (!worldRef.current) return;
-    
-    const { height_cm = 170, bust_cm = 90, waist_cm = 70, hips_cm = 95 } = measurements;
-    
-    // Convert to scene units (assuming 1 unit = 1 meter, so divide by 100)
-    const height = height_cm / 100;
-    const bustRadius = (bust_cm / 100) / (2 * Math.PI);
-    const waistRadius = (waist_cm / 100) / (2 * Math.PI);
-    const hipsRadius = (hips_cm / 100) / (2 * Math.PI);
-    
-    // Remove old mannequin body
-    if (mannequinBodyRef.current) {
-      worldRef.current.removeBody(mannequinBodyRef.current);
-    }
-    
-    // Create compound body with multiple cylinders
-    const mannequinBody = new CANNON.Body({
-      mass: 0, // Static (doesn't move)
-      type: CANNON.Body.STATIC,
-      position: new CANNON.Vec3(0, height * 0.5, 0)
+
+    // Clear existing colliders
+    mannequinBodiesRef.current.forEach(body => {
+      worldRef.current.removeBody(body);
     });
-    
-    // Torso (upper body)
+    mannequinBodiesRef.current = [];
+
+    const { 
+      chest_cm = 90, 
+      waist_cm = 75, 
+      height_cm = 170,
+      shoulder_width_cm = 40,
+      hip_cm = 95
+    } = measurements;
+
+    const scale = height_cm / 170;
+
+    // Create torso cylinder (main body)
+    const torsoRadius = (chest_cm / 100) / (2 * Math.PI);
+    const torsoHeight = height_cm / 100 * 0.35; // ~35% of height
     const torsoShape = new CANNON.Cylinder(
-      bustRadius * 0.8,
-      waistRadius * 0.8,
-      height * 0.4,
+      torsoRadius * 0.9,
+      torsoRadius * 1.1,
+      torsoHeight,
       12
     );
-    mannequinBody.addShape(torsoShape, new CANNON.Vec3(0, height * 0.15, 0));
     
-    // Hips
-    const hipsShape = new CANNON.Cylinder(
-      waistRadius * 0.8,
-      hipsRadius * 0.8,
-      height * 0.2,
-      12
-    );
-    mannequinBody.addShape(hipsShape, new CANNON.Vec3(0, -height * 0.15, 0));
+    const torsoBody = new CANNON.Body({ 
+      mass: 0, // Static
+      shape: torsoShape,
+      position: new CANNON.Vec3(0, 1.2 * scale, 0)
+    });
     
-    worldRef.current.addBody(mannequinBody);
-    mannequinBodyRef.current = mannequinBody;
+    // Rotate to stand upright
+    const quaternion = new CANNON.Quaternion();
+    quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
+    torsoBody.quaternion.copy(quaternion);
     
-    console.log('🧍 Mannequin collider created');
-  };
-  
-  // Step physics simulation
-  const stepPhysics = (deltaTime) => {
-    if (!worldRef.current || !enabled) return;
-    
-    const timeStep = 1 / 60; // 60 FPS
-    const maxSubSteps = 3;
-    
-    worldRef.current.step(timeStep, deltaTime, maxSubSteps);
-  };
-  
-  // Get particle positions for rendering
-  const getClothPositions = (clothIndex = 0) => {
-    if (!clothBodiesRef.current[clothIndex]) return null;
-    
-    const { particles } = clothBodiesRef.current[clothIndex];
-    return particles.map(p => ({
-      x: p.position.x,
-      y: p.position.y,
-      z: p.position.z
-    }));
-  };
-  
-  // Apply wind force
-  const applyWind = (direction = [0.5, 0, 0.5], strength = 2) => {
-    clothBodiesRef.current.forEach(cloth => {
-      cloth.particles.forEach(particle => {
-        if (particle.mass > 0) { // Only affect dynamic particles
-          particle.force.set(
-            direction[0] * strength,
-            direction[1] * strength,
-            direction[2] * strength
-          );
-        }
+    worldRef.current.addBody(torsoBody);
+    mannequinBodiesRef.current.push(torsoBody);
+
+    // Create shoulder spheres
+    const shoulderRadius = 0.08 * scale;
+    const shoulderY = 1.4 * scale;
+    const shoulderZ = 0;
+    const shoulderDistance = (shoulder_width_cm / 100) / 2;
+
+    [-shoulderDistance, shoulderDistance].forEach(x => {
+      const shoulderShape = new CANNON.Sphere(shoulderRadius);
+      const shoulderBody = new CANNON.Body({
+        mass: 0,
+        shape: shoulderShape,
+        position: new CANNON.Vec3(x, shoulderY, shoulderZ)
       });
+      worldRef.current.addBody(shoulderBody);
+      mannequinBodiesRef.current.push(shoulderBody);
+    });
+
+    // Create chest sphere for draping
+    const chestRadius = torsoRadius * 1.2;
+    const chestBody = new CANNON.Body({
+      mass: 0,
+      shape: new CANNON.Sphere(chestRadius),
+      position: new CANNON.Vec3(0, 1.3 * scale, 0.05)
+    });
+    worldRef.current.addBody(chestBody);
+    mannequinBodiesRef.current.push(chestBody);
+  };
+
+  const step = (deltaTime) => {
+    if (worldRef.current && enabled) {
+      worldRef.current.step(1 / 60, deltaTime, 3);
+    }
+  };
+
+  const getParticlePositions = () => {
+    return particlesRef.current.map(p => p.position);
+  };
+
+  const applyWind = (force = 0.5) => {
+    if (!enabled) return;
+    
+    const time = Date.now() * 0.001;
+    particlesRef.current.forEach((particle, i) => {
+      if (particle.mass > 0) {
+        const windX = Math.sin(time + i * 0.1) * force;
+        const windZ = Math.cos(time * 0.5 + i * 0.2) * force * 0.5;
+        particle.applyForce(
+          new CANNON.Vec3(windX, 0, windZ),
+          particle.position
+        );
+      }
     });
   };
-  
-  // Reset cloth to initial position
-  const resetCloth = () => {
-    clothBodiesRef.current.forEach(cloth => {
-      cloth.particles.forEach(particle => {
-        particle.velocity.set(0, 0, 0);
-        particle.angularVelocity.set(0, 0, 0);
-      });
+
+  const rotateMannequin = (angle) => {
+    if (!enabled) return;
+    
+    // Rotate all mannequin colliders
+    mannequinBodiesRef.current.forEach(body => {
+      const pos = body.position;
+      const distance = Math.sqrt(pos.x * pos.x + pos.z * pos.z);
+      const currentAngle = Math.atan2(pos.z, pos.x);
+      const newAngle = currentAngle + angle;
+      
+      body.position.x = distance * Math.cos(newAngle);
+      body.position.z = distance * Math.sin(newAngle);
+      
+      // Rotate the body itself
+      const rotQuat = new CANNON.Quaternion();
+      rotQuat.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), angle);
+      body.quaternion = body.quaternion.mult(rotQuat);
+    });
+    
+    // Rotate cloth particles (only free particles)
+    particlesRef.current.forEach((particle, i) => {
+      if (particle.mass > 0) {
+        const pos = particle.position;
+        const distance = Math.sqrt(pos.x * pos.x + pos.z * pos.z);
+        const currentAngle = Math.atan2(pos.z, pos.x);
+        const newAngle = currentAngle + angle;
+        
+        particle.position.x = distance * Math.cos(newAngle);
+        particle.position.z = distance * Math.sin(newAngle);
+      }
     });
   };
-  
+
   return {
     world: worldRef.current,
-    createClothGrid,
+    createClothBody,
     createMannequinCollider,
-    stepPhysics,
-    getClothPositions,
+    step,
+    getParticlePositions,
     applyWind,
-    resetCloth
+    rotateMannequin,
+    enabled
   };
 };
