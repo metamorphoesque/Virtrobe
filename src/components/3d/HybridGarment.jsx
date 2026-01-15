@@ -1,5 +1,5 @@
-// COMPLETE REWRITE: src/components/3d/HybridGarment.jsx
-// Unified system: Depth-deformed template + Cloth physics
+// FIXED: src/components/3d/HybridGarment.jsx
+// Wait for physics world before initializing
 // ============================================
 import React, { useRef, useEffect, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
@@ -20,6 +20,7 @@ const HybridGarment = ({
   const physicsParticlesRef = useRef([]);
   const vertexMappingRef = useRef([]);
   const geometryRef = useRef(null);
+  const initAttemptRef = useRef(0);
   
   useEffect(() => {
     if (!garmentData?.mesh) {
@@ -30,6 +31,7 @@ const HybridGarment = ({
     console.log('🎨 Initializing hybrid garment:', garmentData.method);
     console.log('   Physics enabled:', enablePhysics);
     console.log('   Cloth physics available:', !!clothPhysics);
+    console.log('   Physics world ready:', !!clothPhysics?.world);
     
     // Find the actual mesh object
     let targetMesh = null;
@@ -53,16 +55,25 @@ const HybridGarment = ({
       hasNormals: !!geometryRef.current.attributes.normal
     });
     
-    // Initialize physics if enabled
-    if (enablePhysics && clothPhysics && clothPhysics.enabled) {
+    // Initialize physics if enabled AND world is ready
+    if (enablePhysics && clothPhysics?.world) {
+      console.log('✅ Physics world is ready, initializing...');
       initializePhysics(targetMesh, garmentData);
+    } else if (enablePhysics && !clothPhysics?.world) {
+      console.log('⏳ Waiting for physics world...');
+      // Physics world not ready yet, will retry
     } else {
-      console.log('⚠️ Physics disabled or not available');
+      console.log('⚠️ Physics disabled');
     }
     
-  }, [garmentData, enablePhysics, measurements, clothPhysics]);
+  }, [garmentData, enablePhysics, measurements, clothPhysics, clothPhysics?.world]);
   
   const initializePhysics = (targetMesh, garmentData) => {
+    if (isPhysicsReady) {
+      console.log('⚠️ Physics already initialized');
+      return;
+    }
+    
     console.log('🔧 Initializing physics for hybrid garment...');
     
     const geometry = targetMesh.geometry;
@@ -70,56 +81,68 @@ const HybridGarment = ({
     const uvs = geometry.attributes.uv;
     
     if (!clothPhysics.world) {
-      console.error('❌ Physics world not initialized');
+      console.error('❌ Physics world STILL not initialized');
       return;
     }
     
     // Create mannequin collider first
-    clothPhysics.createMannequinCollider(measurements);
-    console.log('🧍 Mannequin collider created');
+    try {
+      clothPhysics.createMannequinCollider(measurements);
+      console.log('🧍 Mannequin collider created');
+    } catch (error) {
+      console.error('❌ Failed to create mannequin collider:', error);
+      return;
+    }
     
     // Create physics particles from mesh vertices
     const particles = [];
     const vertexMapping = [];
     
-    // Optimization: Skip vertices to reduce particle count
+    // Optimization: Reduce particle count drastically
     const totalVertices = positions.count;
-    const targetParticles = 400; // Target particle count
+    const targetParticles = Math.min(200, totalVertices); // Max 200 particles for performance
     const skipRate = Math.max(1, Math.floor(totalVertices / targetParticles));
     
-    console.log(`📊 Creating particles (${totalVertices} vertices → ${Math.ceil(totalVertices / skipRate)} particles)`);
+    console.log(`📊 Creating particles (${totalVertices} vertices → ${Math.ceil(totalVertices / skipRate)} particles, skip=${skipRate})`);
     
     // Get world transform
     targetMesh.updateMatrixWorld(true);
     const worldMatrix = targetMesh.matrixWorld;
     
+    let particleCount = 0;
     for (let i = 0; i < positions.count; i += skipRate) {
       const x = positions.getX(i);
       const y = positions.getY(i);
       const z = positions.getZ(i);
       
       // Transform to world space
-      const worldPos = new THREE.Vector3(x, y, z);
-      worldPos.applyMatrix4(worldMatrix);
+      const localPos = new THREE.Vector3(x, y, z);
+      const worldPos = localPos.applyMatrix4(worldMatrix);
       
       // Get UV coordinates to determine if this is a "pinned" vertex
       const u = uvs ? uvs.getX(i) : 0.5;
       const v = uvs ? uvs.getY(i) : 0.5;
       
-      // Pin top edge (shoulders)
-      const isPinned = v > 0.95; // Top 5% is pinned
+      // Pin top edge (shoulders) - top 5% of garment
+      const isPinned = v > 0.95;
       
       // Create physics particle
       const particle = new CANNON.Body({
-        mass: isPinned ? 0 : 0.15, // Pinned = static, otherwise dynamic
+        mass: isPinned ? 0 : 0.2, // Heavier for better draping
         shape: new CANNON.Particle(),
         position: new CANNON.Vec3(worldPos.x, worldPos.y, worldPos.z),
-        linearDamping: 0.6,
-        angularDamping: 0.6
+        linearDamping: 0.5,
+        angularDamping: 0.5
       });
       
-      clothPhysics.world.addBody(particle);
-      particles.push(particle);
+      try {
+        clothPhysics.world.addBody(particle);
+        particles.push(particle);
+        particleCount++;
+      } catch (error) {
+        console.error('❌ Failed to add particle:', error);
+        continue;
+      }
       
       // Map particle index to vertex index
       vertexMapping.push({
@@ -130,61 +153,75 @@ const HybridGarment = ({
       });
     }
     
-    console.log(`✅ Created ${particles.length} physics particles`);
+    console.log(`✅ Created ${particleCount} physics particles`);
     
     // Create constraints (springs between nearby particles)
     const constraints = [];
-    const gridSize = Math.ceil(Math.sqrt(particles.length));
+    const cols = Math.ceil(Math.sqrt(particles.length));
+    const rows = Math.ceil(particles.length / cols);
+    
+    console.log(`🔗 Creating constraints (${rows}x${cols} grid)`);
     
     const connect = (idx1, idx2) => {
       if (idx1 >= 0 && idx1 < particles.length && idx2 >= 0 && idx2 < particles.length) {
         const p1 = particles[idx1];
         const p2 = particles[idx2];
         
-        const distance = Math.sqrt(
-          Math.pow(p1.position.x - p2.position.x, 2) +
-          Math.pow(p1.position.y - p2.position.y, 2) +
-          Math.pow(p1.position.z - p2.position.z, 2)
-        );
+        const dx = p1.position.x - p2.position.x;
+        const dy = p1.position.y - p2.position.y;
+        const dz = p1.position.z - p2.position.z;
+        const distance = Math.sqrt(dx*dx + dy*dy + dz*dz);
         
-        const constraint = new CANNON.DistanceConstraint(
-          p1, p2, distance, 1e7 // High stiffness
-        );
-        
-        clothPhysics.world.addConstraint(constraint);
-        constraints.push(constraint);
+        if (distance > 0) {
+          const constraint = new CANNON.DistanceConstraint(
+            p1, p2, distance, 5e6 // Lower stiffness for more natural draping
+          );
+          
+          try {
+            clothPhysics.world.addConstraint(constraint);
+            constraints.push(constraint);
+          } catch (error) {
+            console.error('❌ Failed to add constraint:', error);
+          }
+        }
       }
     };
     
     // Create grid-like constraint structure
-    for (let i = 0; i < particles.length; i++) {
-      const row = Math.floor(i / gridSize);
-      const col = i % gridSize;
-      
-      // Horizontal connection
-      if (col < gridSize - 1) {
-        connect(i, i + 1);
-      }
-      
-      // Vertical connection
-      if (row < gridSize - 1) {
-        connect(i, i + gridSize);
-      }
-      
-      // Diagonal connections (for shear resistance)
-      if (row < gridSize - 1 && col < gridSize - 1) {
-        connect(i, i + gridSize + 1);
-        connect(i + 1, i + gridSize);
+    let constraintCount = 0;
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const i = row * cols + col;
+        if (i >= particles.length) break;
+        
+        // Horizontal connection
+        if (col < cols - 1) {
+          connect(i, i + 1);
+          constraintCount++;
+        }
+        
+        // Vertical connection
+        if (row < rows - 1) {
+          connect(i, i + cols);
+          constraintCount++;
+        }
+        
+        // Diagonal connections (for shear resistance)
+        if (row < rows - 1 && col < cols - 1) {
+          connect(i, i + cols + 1);
+          connect(i + 1, i + cols);
+          constraintCount += 2;
+        }
       }
     }
     
-    console.log(`🔗 Created ${constraints.length} constraints`);
+    console.log(`✅ Created ${constraintCount} constraints`);
     
     physicsParticlesRef.current = particles;
     vertexMappingRef.current = vertexMapping;
     setIsPhysicsReady(true);
     
-    console.log('✅ Physics initialization complete');
+    console.log('✅ Physics initialization complete!');
   };
   
   // Animation loop
@@ -192,18 +229,23 @@ const HybridGarment = ({
     if (!meshRef.current || !geometryRef.current) return;
     
     // Physics simulation
-    if (enablePhysics && clothPhysics && clothPhysics.enabled && isPhysicsReady) {
+    if (enablePhysics && clothPhysics?.world && isPhysicsReady) {
       // Update physics world
-      clothPhysics.step(delta);
+      try {
+        clothPhysics.step(delta);
+      } catch (error) {
+        console.error('Physics step error:', error);
+        return;
+      }
       
       // Apply wind effect occasionally
-      if (Math.random() < 0.05) {
-        const windForce = Math.random() * 0.4 + 0.2;
+      if (Math.random() < 0.08) {
+        const windForce = Math.random() * 0.6 + 0.3;
         physicsParticlesRef.current.forEach((particle, i) => {
           if (particle.mass > 0) {
             const time = Date.now() * 0.001;
-            const windX = Math.sin(time + i * 0.1) * windForce;
-            const windZ = Math.cos(time * 0.5 + i * 0.2) * windForce * 0.5;
+            const windX = Math.sin(time + i * 0.15) * windForce;
+            const windZ = Math.cos(time * 0.7 + i * 0.25) * windForce * 0.6;
             particle.applyForce(
               new CANNON.Vec3(windX, 0, windZ),
               particle.position
@@ -223,7 +265,7 @@ const HybridGarment = ({
       groupRef.current.rotation.y += angle;
       
       // Sync physics rotation
-      if (enablePhysics && clothPhysics && clothPhysics.enabled && isPhysicsReady) {
+      if (enablePhysics && clothPhysics?.world && isPhysicsReady) {
         rotatePhysicsParticles(angle);
       }
     }
@@ -264,32 +306,35 @@ const HybridGarment = ({
     });
     
     // Interpolate positions for vertices that don't have particles
-    const skipRate = Math.max(1, Math.floor(positions.count / 400));
+    const skipRate = Math.max(1, Math.floor(positions.count / 200));
     if (skipRate > 1) {
       for (let i = 0; i < positions.count; i++) {
         if (i % skipRate !== 0) {
           // Find nearest updated vertices and interpolate
           const prev = Math.floor(i / skipRate) * skipRate;
           const next = Math.min(positions.count - 1, (Math.floor(i / skipRate) + 1) * skipRate);
-          const t = (i % skipRate) / skipRate;
           
-          const x = THREE.MathUtils.lerp(
-            positions.getX(prev),
-            positions.getX(next),
-            t
-          );
-          const y = THREE.MathUtils.lerp(
-            positions.getY(prev),
-            positions.getY(next),
-            t
-          );
-          const z = THREE.MathUtils.lerp(
-            positions.getZ(prev),
-            positions.getZ(next),
-            t
-          );
-          
-          positions.setXYZ(i, x, y, z);
+          if (prev !== next) {
+            const t = (i % skipRate) / skipRate;
+            
+            const x = THREE.MathUtils.lerp(
+              positions.getX(prev),
+              positions.getX(next),
+              t
+            );
+            const y = THREE.MathUtils.lerp(
+              positions.getY(prev),
+              positions.getY(next),
+              t
+            );
+            const z = THREE.MathUtils.lerp(
+              positions.getZ(prev),
+              positions.getZ(next),
+              t
+            );
+            
+            positions.setXYZ(i, x, y, z);
+          }
         }
       }
     }
@@ -303,11 +348,14 @@ const HybridGarment = ({
       if (particle.mass > 0) {
         const pos = particle.position;
         const distance = Math.sqrt(pos.x * pos.x + pos.z * pos.z);
-        const currentAngle = Math.atan2(pos.z, pos.x);
-        const newAngle = currentAngle + angle;
         
-        particle.position.x = distance * Math.cos(newAngle);
-        particle.position.z = distance * Math.sin(newAngle);
+        if (distance > 0.001) {
+          const currentAngle = Math.atan2(pos.z, pos.x);
+          const newAngle = currentAngle + angle;
+          
+          particle.position.x = distance * Math.cos(newAngle);
+          particle.position.z = distance * Math.sin(newAngle);
+        }
       }
     });
   };
@@ -320,33 +368,22 @@ const HybridGarment = ({
       
       {/* Debug indicators */}
       {enablePhysics && isPhysicsReady && (
-        <>
-          {/* Green = physics active */}
-          <mesh position={[0, 2.5, 0]}>
-            <sphereGeometry args={[0.03]} />
-            <meshBasicMaterial color="#00ff00" />
-          </mesh>
-          
-          {/* Show particle count */}
-          {/* <Html position={[0, 2.7, 0]} center>
-            <div style={{ 
-              background: 'rgba(0,0,0,0.8)', 
-              color: 'white', 
-              padding: '4px 8px',
-              borderRadius: '4px',
-              fontSize: '10px',
-              whiteSpace: 'nowrap'
-            }}>
-              {physicsParticlesRef.current.length} particles
-            </div>
-          </Html> */}
-        </>
+        <mesh position={[0, 2.5, 0]}>
+          <sphereGeometry args={[0.04]} />
+          <meshBasicMaterial color="#00ff00" />
+        </mesh>
+      )}
+      
+      {enablePhysics && !isPhysicsReady && clothPhysics?.world && (
+        <mesh position={[0, 2.5, 0]}>
+          <sphereGeometry args={[0.04]} />
+          <meshBasicMaterial color="#ffff00" />
+        </mesh>
       )}
       
       {!enablePhysics && (
-        /* Red = static mode */
         <mesh position={[0, 2.5, 0]}>
-          <sphereGeometry args={[0.03]} />
+          <sphereGeometry args={[0.04]} />
           <meshBasicMaterial color="#ff0000" />
         </mesh>
       )}
