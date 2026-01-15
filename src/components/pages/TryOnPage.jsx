@@ -1,5 +1,4 @@
-// 2. src/components/pages/TryOnPage.jsx (UPDATED WITH PHYSICS TOGGLE)
-// ============================================
+// src/components/pages/TryOnPage.jsx (FIXED)
 import React from 'react';
 import { Save, Share2, User, Wind } from 'lucide-react';
 import Scene from '../3d/Scene';
@@ -15,7 +14,7 @@ import hybridGarmentGenerator from '../../services/hybridGarmentGenerator';
 
 const TryOnPage = ({ onSave }) => {
   const [selectedClothingType, setSelectedClothingType] = React.useState('shirt');
-  const [enablePhysics, setEnablePhysics] = React.useState(false); // NEW: Physics toggle
+  const [enablePhysics, setEnablePhysics] = React.useState(false);
   
   // Custom hooks
   const bodyMeasurements = useBodyMeasurements();
@@ -31,10 +30,15 @@ const TryOnPage = ({ onSave }) => {
         date: new Date().toLocaleDateString(),
         measurements: bodyMeasurements.measurements,
         garmentType: selectedClothingType,
-        color: '#000000'
+        color: garmentUpload.garmentData?.dominantColor || '#000000'
       });
     }
     saveNotification.show();
+  };
+
+  // Wrapper to pass garment type to upload handler
+  const handleImageUpload = (event) => {
+    garmentUpload.handleImageUpload(event, selectedClothingType);
   };
   
   return (
@@ -45,7 +49,7 @@ const TryOnPage = ({ onSave }) => {
         <ClothingSidebar
           selectedType={selectedClothingType}
           onSelectType={setSelectedClothingType}
-          onImageUpload={garmentUpload.handleImageUpload}
+          onImageUpload={handleImageUpload}
           isDisabled={!bodyMeasurements.gender}
           isProcessing={garmentUpload.isProcessing}
         />
@@ -62,12 +66,12 @@ const TryOnPage = ({ onSave }) => {
             <Scene 
               measurements={bodyMeasurements.measurements} 
               garmentType={selectedClothingType} 
-              garmentColor="#000000" 
+              garmentColor={garmentUpload.garmentData?.dominantColor || "#000000"} 
               showMeasurements={false} 
-              showGarment={true} 
+              showGarment={!!garmentUpload.garmentData} 
               autoRotate={true} 
               garmentData={garmentUpload.garmentData}
-              enableClothPhysics={enablePhysics} // NEW: Pass physics state
+              enableClothPhysics={enablePhysics}
             />
             
             <div className="absolute top-4 left-4 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-black/10">
@@ -76,15 +80,24 @@ const TryOnPage = ({ onSave }) => {
             
             {bodyMeasurements.gender && (
               <div className="absolute top-4 right-4 flex items-center gap-2">
-                {/* NEW: Physics Toggle Button */}
+                {/* Physics Toggle Button */}
                 <button
                   onClick={() => setEnablePhysics(!enablePhysics)}
+                  disabled={!garmentUpload.garmentData}
                   className={`px-3 py-1.5 rounded-lg shadow-sm border transition-all duration-300 ${
                     enablePhysics 
                       ? 'bg-black text-white border-black' 
-                      : 'bg-white text-black border-black/20 hover:border-black'
+                      : garmentUpload.garmentData
+                        ? 'bg-white text-black border-black/20 hover:border-black'
+                        : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
                   }`}
-                  title={enablePhysics ? 'Disable Cloth Physics' : 'Enable Cloth Physics'}
+                  title={
+                    !garmentUpload.garmentData 
+                      ? 'Upload a garment first' 
+                      : enablePhysics 
+                        ? 'Disable Cloth Physics' 
+                        : 'Enable Cloth Physics'
+                  }
                 >
                   <Wind className="w-3 h-3" />
                 </button>
@@ -94,16 +107,21 @@ const TryOnPage = ({ onSave }) => {
                 </div>
                 
                 <button 
-                  onClick={() => bodyMeasurements.setGender(null)} 
+                  onClick={() => {
+                    bodyMeasurements.setGender(null);
+                    setEnablePhysics(false);
+                    garmentUpload.clearGarment();
+                  }} 
                   className="px-3 py-1.5 bg-white rounded-lg shadow-sm border border-black/20 hover:border-black transition-colors"
+                  title="Reset and change gender"
                 >
                   <User className="w-3 h-3 text-black" />
                 </button>
               </div>
             )}
             
-            {/* NEW: Physics Status Indicator */}
-            {enablePhysics && bodyMeasurements.gender && (
+            {/* Physics Status Indicator */}
+            {enablePhysics && bodyMeasurements.gender && garmentUpload.garmentData && (
               <div className="absolute top-16 right-4 bg-black text-white px-3 py-1.5 rounded-lg shadow-sm">
                 <div className="flex items-center gap-2">
                   <Wind className="w-3 h-3 animate-pulse" />
@@ -114,13 +132,26 @@ const TryOnPage = ({ onSave }) => {
             
             {garmentUpload.isProcessing && (
               <div className="absolute bottom-4 left-4 bg-black text-white px-4 py-2 rounded-lg shadow-lg">
-                <span className="text-xs font-medium">Processing garment...</span>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span className="text-xs font-medium">Processing garment...</span>
+                </div>
               </div>
             )}
             
             {garmentUpload.uploadedImage && bodyMeasurements.gender && !garmentUpload.isProcessing && (
               <div className="absolute bottom-4 left-4 bg-white rounded-lg shadow-lg overflow-hidden border border-black/10">
-                <img src={garmentUpload.uploadedImage} alt="Uploaded" className="w-16 h-16 object-cover" />
+                <img 
+                  src={garmentUpload.uploadedImage} 
+                  alt="Uploaded garment" 
+                  className="w-16 h-16 object-cover" 
+                />
+              </div>
+            )}
+
+            {garmentUpload.error && (
+              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg">
+                <span className="text-xs font-medium">{garmentUpload.error}</span>
               </div>
             )}
           </div>
