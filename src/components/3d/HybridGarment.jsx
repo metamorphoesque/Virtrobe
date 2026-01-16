@@ -98,9 +98,9 @@ const HybridGarment = ({
     const particles = [];
     const vertexMapping = [];
     
-    // Optimization: Reduce particle count drastically
+    // Optimization: Much fewer particles for stability
     const totalVertices = positions.count;
-    const targetParticles = Math.min(200, totalVertices); // Max 200 particles for performance
+    const targetParticles = 100; // Reduce to 100 for stability
     const skipRate = Math.max(1, Math.floor(totalVertices / targetParticles));
     
     console.log(`📊 Creating particles (${totalVertices} vertices → ${Math.ceil(totalVertices / skipRate)} particles, skip=${skipRate})`);
@@ -115,6 +115,9 @@ const HybridGarment = ({
       const y = positions.getY(i);
       const z = positions.getZ(i);
       
+      // Skip hidden vertices (y < -5 means it was hidden for sleeve removal)
+      if (y < -5) continue;
+      
       // Transform to world space
       const localPos = new THREE.Vector3(x, y, z);
       const worldPos = localPos.applyMatrix4(worldMatrix);
@@ -123,16 +126,16 @@ const HybridGarment = ({
       const u = uvs ? uvs.getX(i) : 0.5;
       const v = uvs ? uvs.getY(i) : 0.5;
       
-      // Pin top edge (shoulders) - top 5% of garment
-      const isPinned = v > 0.95;
+      // Pin top edge (shoulders) - top 10% of garment
+      const isPinned = v > 0.9;
       
       // Create physics particle
       const particle = new CANNON.Body({
-        mass: isPinned ? 0 : 0.2, // Heavier for better draping
+        mass: isPinned ? 0 : 0.15, // Lighter for gentler physics
         shape: new CANNON.Particle(),
         position: new CANNON.Vec3(worldPos.x, worldPos.y, worldPos.z),
-        linearDamping: 0.5,
-        angularDamping: 0.5
+        linearDamping: 0.7, // More damping = slower, more stable
+        angularDamping: 0.7
       });
       
       try {
@@ -174,7 +177,7 @@ const HybridGarment = ({
         
         if (distance > 0) {
           const constraint = new CANNON.DistanceConstraint(
-            p1, p2, distance, 5e6 // Lower stiffness for more natural draping
+            p1, p2, distance, 2e6 // Much lower stiffness = softer cloth
           );
           
           try {
@@ -238,14 +241,14 @@ const HybridGarment = ({
         return;
       }
       
-      // Apply wind effect occasionally
-      if (Math.random() < 0.08) {
-        const windForce = Math.random() * 0.6 + 0.3;
+      // Apply wind effect occasionally (less frequent)
+      if (Math.random() < 0.03) { // 3% chance per frame
+        const windForce = Math.random() * 0.3 + 0.1; // Gentler wind
         physicsParticlesRef.current.forEach((particle, i) => {
           if (particle.mass > 0) {
             const time = Date.now() * 0.001;
-            const windX = Math.sin(time + i * 0.15) * windForce;
-            const windZ = Math.cos(time * 0.7 + i * 0.25) * windForce * 0.6;
+            const windX = Math.sin(time + i * 0.1) * windForce;
+            const windZ = Math.cos(time * 0.5 + i * 0.15) * windForce * 0.4;
             particle.applyForce(
               new CANNON.Vec3(windX, 0, windZ),
               particle.position
@@ -306,9 +309,13 @@ const HybridGarment = ({
     });
     
     // Interpolate positions for vertices that don't have particles
-    const skipRate = Math.max(1, Math.floor(positions.count / 200));
+    const skipRate = Math.max(1, Math.floor(positions.count / 100));
     if (skipRate > 1) {
       for (let i = 0; i < positions.count; i++) {
+        // Skip hidden vertices
+        const y = positions.getY(i);
+        if (y < -5) continue; // Don't interpolate hidden sleeve vertices
+        
         if (i % skipRate !== 0) {
           // Find nearest updated vertices and interpolate
           const prev = Math.floor(i / skipRate) * skipRate;
