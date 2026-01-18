@@ -1,10 +1,10 @@
 // src/hooks/useGarmentUpload.js
 // ============================================
-// UPDATED: Now uses TripoSR instead of hybridGarmentGenerator
+// UPDATED to use productionGarmentService
 // ============================================
 
 import { useState } from 'react';
-
+import productionGarmentService from '../services/ai/productionGarmentService';
 
 export const useGarmentUpload = (measurements) => {
   const [uploadedImage, setUploadedImage] = useState(null);
@@ -20,12 +20,18 @@ export const useGarmentUpload = (measurements) => {
     setError(null);
 
     try {
-      console.log('🎨 Processing garment upload with TripoSR...');
+      console.log('🎨 Processing garment upload...');
       console.log('   Type:', garmentType);
       console.log('   Measurements:', measurements);
 
-      // Generate 3D mesh using TripoSR
-      const result = await triposrService.generate(file, measurements);
+      // Generate using production service
+      const result = await productionGarmentService.generate(file, measurements);
+
+      // Override type if user specified
+      if (garmentType) {
+        result.type = garmentType;
+      }
+
       setGarmentData(result);
 
       // Store uploaded image for preview
@@ -33,11 +39,11 @@ export const useGarmentUpload = (measurements) => {
       reader.onloadend = () => setUploadedImage(reader.result);
       reader.readAsDataURL(file);
 
-      console.log('✅ TripoSR generation complete:', result);
+      console.log('✅ Generated garment:', result);
 
     } catch (err) {
       console.error('❌ Failed to process garment:', err);
-      setError(err.message || 'Failed to process garment. Please try another image.');
+      setError('Failed to process garment. Please try another image.');
       setGarmentData(null);
       setUploadedImage(null);
     } finally {
