@@ -1,11 +1,15 @@
-// src/components/3d/Scene.jsx (UNIFIED SYSTEM)
-// Single rendering path: HybridGarment handles everything
-import React, { useRef } from 'react';
-import { Canvas } from '@react-three/fiber';
+// src/components/3d/Scene.jsx - WITH CAMERA LOCK
+// ============================================
+// 2.5D VIRTUAL TRY-ON SYSTEM
+// Camera locks to front view when garment is loaded
+// ============================================
+
+import React, { useRef, useEffect, useState } from 'react';
+import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls, Environment, ContactShadows, Grid, useGLTF } from '@react-three/drei';
+import * as THREE from 'three';
 import MorphableMannequin from './MorphableMannequin';
-import HybridGarment from './HybridGarment';
-import { useClothPhysics } from '../../hooks/useClothPhysics';
+import Garment2DOverlay from './Garment2DOverlay';
 
 // Display Stand Component
 const DisplayStand = ({ position = [0, 0, 0], scale = 1 }) => {
@@ -22,18 +26,87 @@ const DisplayStand = ({ position = [0, 0, 0], scale = 1 }) => {
 
 useGLTF.preload('/models/DisplayStand.glb');
 
+// Camera Controller - Handles smooth transitions and locking
+const CameraController = ({ isLocked, onTransitionComplete }) => {
+  const { camera, controls } = useThree();
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const targetPosition = useRef(new THREE.Vector3(0, 1.2, 4));
+  const targetLookAt = useRef(new THREE.Vector3(0, 1, 0));
+  
+  useEffect(() => {
+    if (!controls) return;
+    
+    if (isLocked) {
+      console.log('🔒 Locking camera to front view');
+      setIsTransitioning(true);
+      
+      // Disable rotation, keep zoom
+      controls.enableRotate = false;
+      controls.enablePan = false;
+      controls.enableZoom = true;
+      controls.minDistance = 2;
+      controls.maxDistance = 6;
+      
+    } else {
+      console.log('🔓 Unlocking camera');
+      
+      // Re-enable rotation
+      controls.enableRotate = true;
+      controls.enablePan = false;
+      controls.enableZoom = true;
+      controls.minDistance = 2;
+      controls.maxDistance = 8;
+      controls.minPolarAngle = Math.PI / 4;
+      controls.maxPolarAngle = Math.PI / 1.5;
+      
+      setIsTransitioning(false);
+    }
+  }, [isLocked, controls]);
+  
+  useFrame(() => {
+    if (!isTransitioning || !controls) return;
+    
+    // Smooth camera transition to front view
+    camera.position.lerp(targetPosition.current, 0.1);
+    
+    // Smooth look-at transition
+    const currentTarget = controls.target.clone();
+    currentTarget.lerp(targetLookAt.current, 0.1);
+    controls.target.copy(currentTarget);
+    controls.update();
+    
+    // Check if transition is complete
+    const distanceToTarget = camera.position.distanceTo(targetPosition.current);
+    if (distanceToTarget < 0.01) {
+      setIsTransitioning(false);
+      if (onTransitionComplete) {
+        onTransitionComplete();
+      }
+      console.log('✅ Camera locked to front view');
+    }
+  });
+  
+  return null;
+};
+
 // Scene Content Component
 const SceneContent = ({ 
   measurements, 
-  garmentType, 
-  garmentColor, 
-  showMeasurements, 
   showGarment, 
   autoRotate,
-  garmentData,
-  enableClothPhysics = false
+  garmentData
 }) => {
   const mannequinRef = useRef();
+  const [cameraLocked, setCameraLocked] = useState(false);
+  
+  // Lock camera when garment is shown
+  useEffect(() => {
+    if (showGarment && garmentData) {
+      setCameraLocked(true);
+    } else {
+      setCameraLocked(false);
+    }
+  }, [showGarment, garmentData]);
   
   // Calculate display stand height
   const calculateStandHeight = () => {
@@ -44,23 +117,24 @@ const SceneContent = ({
   };
   
   const standHeight = calculateStandHeight();
-  
-  // Initialize cloth physics (always, but only enabled when needed)
-  const clothPhysics = useClothPhysics({ 
-    enabled: enableClothPhysics && showGarment 
-  });
 
   return (
     <>
+      {/* Camera Controller */}
+      <CameraController 
+        isLocked={cameraLocked}
+        onTransitionComplete={() => console.log('Camera transition complete')}
+      />
+      
       {/* ============================================
-          LIGHTING SETUP - Minimalist & Clean
+          LIGHTING SETUP - Optimized for 2D Overlay
           ============================================ */}
       
-      <ambientLight intensity={0.6} />
+      <ambientLight intensity={0.7} />
       
       <spotLight 
         position={[0, 6, 0]}
-        intensity={1.5}
+        intensity={1.2}
         angle={0.6}
         penumbra={0.5}
         castShadow
@@ -69,9 +143,9 @@ const SceneContent = ({
         target-position={[0, 1, 0]}
       />
       
-      <directionalLight position={[2, 3, 2]} intensity={0.4} />
-      <pointLight position={[-2, 1, -2]} intensity={0.2} />
-      <pointLight position={[2, 1, -2]} intensity={0.2} />
+      <directionalLight position={[2, 3, 2]} intensity={0.5} />
+      <directionalLight position={[-2, 3, 2]} intensity={0.3} />
+      <pointLight position={[0, 1, 2]} intensity={0.4} />
       
       {/* ============================================
           ENVIRONMENT & BACKGROUND
@@ -115,7 +189,7 @@ const SceneContent = ({
       />
       
       {/* ============================================
-          DISPLAY STAND - Fixed position
+          DISPLAY STAND
           ============================================ */}
       
       <DisplayStand 
@@ -130,46 +204,22 @@ const SceneContent = ({
       <MorphableMannequin 
         ref={mannequinRef}
         measurements={measurements}
-        autoRotate={autoRotate && !enableClothPhysics && !showGarment}
+        autoRotate={autoRotate && !cameraLocked}
         standHeight={standHeight - 0.2}
       />
       
       {/* ============================================
-          UNIFIED GARMENT RENDERING
-          Single component handles both modes:
-          - Physics OFF: Static depth-deformed template
-          - Physics ON: Dynamic cloth simulation
+          2.5D GARMENT OVERLAY
+          Projects warped garment texture as decal
           ============================================ */}
       
       {showGarment && garmentData && (
-        <HybridGarment 
+        <Garment2DOverlay 
           garmentData={garmentData}
           measurements={measurements}
-          clothPhysics={clothPhysics}
-          autoRotate={autoRotate}
-          enablePhysics={enableClothPhysics}
+          mannequinRef={mannequinRef}
           position={[0, 0, 0]}
         />
-      )}
-      
-      {/* ============================================
-          DEBUG VISUALIZATION
-          ============================================ */}
-      
-      {garmentData && (
-        <>
-          {/* Physics status indicator */}
-          <mesh position={[-1.5, 2, 0]} visible={false}>
-            <boxGeometry args={[0.1, 0.1, 0.1]} />
-            <meshBasicMaterial color={enableClothPhysics ? "#00ff00" : "#ff0000"} />
-          </mesh>
-          
-          {/* Garment type label */}
-          <mesh position={[1.5, 2, 0]} visible={false}>
-            <sphereGeometry args={[0.05]} />
-            <meshBasicMaterial color="#0000ff" />
-          </mesh>
-        </>
       )}
       
       {/* ============================================
@@ -186,8 +236,15 @@ const SceneContent = ({
         target={[0, 1, 0]}
         enableDamping={true}
         dampingFactor={0.05}
-        enabled={!enableClothPhysics} // Disable orbit when physics is on to avoid conflicts
       />
+      
+      {/* Debug: Camera lock indicator */}
+      {cameraLocked && (
+        <mesh position={[0, 2.5, 0]} visible={false}>
+          <sphereGeometry args={[0.05]} />
+          <meshBasicMaterial color="#00ff00" />
+        </mesh>
+      )}
     </>
   );
 };
