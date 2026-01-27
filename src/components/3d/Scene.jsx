@@ -11,13 +11,16 @@ import * as THREE from 'three';
 import MorphableMannequin from './MorphableMannequin';
 import Garment2DOverlay from './Garment2DOverlay';
 
-// Display Stand Component
+// Display Stand Component with Clone Support
 const DisplayStand = ({ position = [0, 0, 0], scale = 1 }) => {
   const { scene } = useGLTF('/models/DisplayStand.glb');
   
+  // Clone the scene to avoid sharing between canvases
+  const clonedScene = React.useMemo(() => scene.clone(), [scene]);
+  
   return (
     <primitive 
-      object={scene} 
+      object={clonedScene} 
       position={position}
       scale={scale}
     />
@@ -27,11 +30,26 @@ const DisplayStand = ({ position = [0, 0, 0], scale = 1 }) => {
 useGLTF.preload('/models/DisplayStand.glb');
 
 // Camera Controller - Handles smooth transitions and locking
-const CameraController = ({ isLocked, onTransitionComplete }) => {
+const CameraController = ({ isLocked, onTransitionComplete, mannequinRotation = 0 }) => {
   const { camera, controls } = useThree();
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const targetPosition = useRef(new THREE.Vector3(0, 1.2, 4));
+  
+  // Calculate camera position based on mannequin's front-facing direction
+  // mannequinRotation: 0 = facing +Z, 90 = facing -X, 180 = facing -Z, 270 = facing +X
+  const targetPosition = useRef(new THREE.Vector3());
   const targetLookAt = useRef(new THREE.Vector3(0, 1, 0));
+  
+  useEffect(() => {
+    // Convert mannequin rotation to camera position
+    const angle = (mannequinRotation * Math.PI) / 180;
+    const distance = 4;
+    targetPosition.current.set(
+      Math.sin(angle) * distance,
+      1.2,
+      Math.cos(angle) * distance
+    );
+    console.log('📐 Camera target position:', targetPosition.current);
+  }, [mannequinRotation]);
   
   useEffect(() => {
     if (!controls) return;
@@ -40,24 +58,48 @@ const CameraController = ({ isLocked, onTransitionComplete }) => {
       console.log('🔒 Locking camera to front view');
       setIsTransitioning(true);
       
-      // Disable rotation, keep zoom
+      // COMPLETELY DISABLE ALL MOVEMENT EXCEPT ZOOM
       controls.enableRotate = false;
-      controls.enablePan = false;
+      controls.enablePan = false; // Disables right-click pan
       controls.enableZoom = true;
       controls.minDistance = 2;
       controls.maxDistance = 6;
       
+      // Lock polar and azimuth angles
+      controls.minPolarAngle = controls.getPolarAngle();
+      controls.maxPolarAngle = controls.getPolarAngle();
+      controls.minAzimuthAngle = controls.getAzimuthalAngle();
+      controls.maxAzimuthAngle = controls.getAzimuthalAngle();
+      
+      // Disable mouse buttons for rotation and pan
+      controls.mouseButtons = {
+        LEFT: null,   // Disable left-click rotate
+        MIDDLE: null, // Disable middle-click pan
+        RIGHT: null   // Disable right-click pan
+      };
+      
     } else {
       console.log('🔓 Unlocking camera');
       
-      // Re-enable rotation
+      // Re-enable rotation with constraints
       controls.enableRotate = true;
-      controls.enablePan = false;
+      controls.enablePan = false; // Keep pan disabled always
       controls.enableZoom = true;
       controls.minDistance = 2;
       controls.maxDistance = 8;
+      
+      // Reset angle constraints
       controls.minPolarAngle = Math.PI / 4;
       controls.maxPolarAngle = Math.PI / 1.5;
+      controls.minAzimuthAngle = -Infinity;
+      controls.maxAzimuthAngle = Infinity;
+      
+      // Restore mouse buttons (but no pan)
+      controls.mouseButtons = {
+        LEFT: 0,      // Left-click rotate
+        MIDDLE: null, // No middle-click
+        RIGHT: null   // No right-click pan
+      };
       
       setIsTransitioning(false);
     }
@@ -94,7 +136,8 @@ const SceneContent = ({
   measurements, 
   showGarment, 
   autoRotate,
-  garmentData
+  garmentData,
+  mannequinFrontFacing = 0 // NEW: 0=+Z, 90=-X, 180=-Z, 270=+X
 }) => {
   const mannequinRef = useRef();
   const [cameraLocked, setCameraLocked] = useState(false);
@@ -123,8 +166,47 @@ const SceneContent = ({
       {/* Camera Controller */}
       <CameraController 
         isLocked={cameraLocked}
+        mannequinRotation={mannequinFrontFacing}
         onTransitionComplete={() => console.log('Camera transition complete')}
       />
+      
+      {/* ============================================
+          DEBUG: AXIS GIZMO - Shows scene orientation
+          Red = X (Right), Green = Y (Up), Blue = Z (Forward)
+          ============================================ */}
+      
+      <axesHelper args={[2]} position={[0, 0.5, 0]} />
+      
+      {/* Labels for axes */}
+      <group position={[0, 0.5, 0]}>
+        {/* X axis label */}
+        <mesh position={[2.2, 0, 0]}>
+          <sphereGeometry args={[0.1]} />
+          <meshBasicMaterial color="#ff0000" />
+        </mesh>
+        
+        {/* Y axis label */}
+        <mesh position={[0, 2.2, 0]}>
+          <sphereGeometry args={[0.1]} />
+          <meshBasicMaterial color="#00ff00" />
+        </mesh>
+        
+        {/* Z axis label */}
+        <mesh position={[0, 0, 2.2]}>
+          <sphereGeometry args={[0.1]} />
+          <meshBasicMaterial color="#0000ff" />
+        </mesh>
+      </group>
+      
+      {/* Front-facing indicator arrow */}
+      {cameraLocked && (
+        <group position={[0, 1.5, 0]}>
+          <mesh position={[0, 0, 1.5]}>
+            <coneGeometry args={[0.1, 0.3, 8]} />
+            <meshBasicMaterial color="#ffff00" />
+          </mesh>
+        </group>
+      )}
       
       {/* ============================================
           LIGHTING SETUP - Optimized for 2D Overlay
@@ -189,24 +271,37 @@ const SceneContent = ({
       />
       
       {/* ============================================
-          DISPLAY STAND
+          DISPLAY STAND - Rotated to match mannequin
           ============================================ */}
       
-      <DisplayStand 
-        position={[0, 0.7, 0]}
-        scale={0.7}
-      />
+      <group rotation={[0, Math.PI / 2, 0]}>
+        <DisplayStand 
+          position={[0, 0.7, 0]}
+          scale={0.7}
+        />
+      </group>
       
       {/* ============================================
-          MORPHABLE MANNEQUIN
+          MORPHABLE MANNEQUIN - With Rotation Fix
           ============================================ */}
       
-      <MorphableMannequin 
-        ref={mannequinRef}
-        measurements={measurements}
-        autoRotate={autoRotate && !cameraLocked}
-        standHeight={standHeight - 0.2}
-      />
+      <group rotation={[0, Math.PI / 2, 0]}> {/* 90° rotation to face front */}
+        <MorphableMannequin 
+          ref={(node) => {
+            internalMannequinRef.current = node;
+            if (mannequinRef) {
+              if (typeof mannequinRef === 'function') {
+                mannequinRef(node);
+              } else {
+                mannequinRef.current = node;
+              }
+            }
+          }}
+          measurements={measurements}
+          autoRotate={autoRotate && !cameraLocked}
+          standHeight={standHeight - 0.2}
+        />
+      </group>
       
       {/* ============================================
           2.5D GARMENT OVERLAY
@@ -217,7 +312,7 @@ const SceneContent = ({
         <Garment2DOverlay 
           garmentData={garmentData}
           measurements={measurements}
-          mannequinRef={mannequinRef}
+          mannequinRef={internalMannequinRef}
           position={[0, 0, 0]}
         />
       )}
@@ -238,6 +333,18 @@ const SceneContent = ({
         dampingFactor={0.05}
       />
       
+      {/* Debug: Mannequin Orientation Helpers */}
+      {internalMannequinRef.current && false && ( // Set to true to see axes
+        <group position={[0, 1, 0]}>
+          {/* Red = X axis (Right) */}
+          <arrowHelper args={[new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, 0), 0.5, 0xff0000]} />
+          {/* Green = Y axis (Up) */}
+          <arrowHelper args={[new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 0), 0.5, 0x00ff00]} />
+          {/* Blue = Z axis (Forward in Three.js) */}
+          <arrowHelper args={[new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, 0), 0.5, 0x0000ff]} />
+        </group>
+      )}
+      
       {/* Debug: Camera lock indicator */}
       {cameraLocked && (
         <mesh position={[0, 2.5, 0]} visible={false}>
@@ -250,6 +357,32 @@ const SceneContent = ({
 };
 
 const Scene = (props) => {
+  // Extract mannequinFrontFacing if provided, default to 0 (+Z axis)
+  const { mannequinFrontFacing = 0, ...sceneProps } = props;
+  
+  // Handle context lost/restored
+  const handleContextLost = (event) => {
+    event.preventDefault();
+    console.error('⚠️ WebGL context lost. Attempting to restore...');
+  };
+
+  const handleContextRestored = () => {
+    console.log('✅ WebGL context restored');
+  };
+
+  React.useEffect(() => {
+    const canvas = document.querySelector('canvas');
+    if (canvas) {
+      canvas.addEventListener('webglcontextlost', handleContextLost);
+      canvas.addEventListener('webglcontextrestored', handleContextRestored);
+      
+      return () => {
+        canvas.removeEventListener('webglcontextlost', handleContextLost);
+        canvas.removeEventListener('webglcontextrestored', handleContextRestored);
+      };
+    }
+  }, []);
+  
   return (
     <Canvas 
       camera={{ 
@@ -261,10 +394,17 @@ const Scene = (props) => {
       gl={{ 
         antialias: true,
         alpha: false,
-        preserveDrawingBuffer: true
+        preserveDrawingBuffer: true,
+        powerPreference: 'high-performance', // Request better GPU
+        failIfMajorPerformanceCaveat: false
+      }}
+      onCreated={({ gl }) => {
+        // Enable context loss handling
+        gl.domElement.addEventListener('webglcontextlost', handleContextLost, false);
+        gl.domElement.addEventListener('webglcontextrestored', handleContextRestored, false);
       }}
     >
-      <SceneContent {...props} />
+      <SceneContent {...sceneProps} mannequinFrontFacing={mannequinFrontFacing} />
     </Canvas>
   );
 };

@@ -11,6 +11,7 @@ import GenderSelector from '../TryOn/GenderSelector';
 import ClothingSidebar from '../TryOn/ClothingSidebar';
 import MeasurementPanel from '../TryOn/MeasurementPanel';
 import SaveNotification from '../TryOn/SaveNotification';
+import DebugOverlay from '../debug/debugOverlay'; // LOWERCASE to match file
 import { useBodyMeasurements } from '../../hooks/useBodyMeasurements';
 import { useGarmentUpload } from '../../hooks/useGarmentUpload';
 import { useUnitConversion } from '../../hooks/useUnitConversion';
@@ -18,12 +19,30 @@ import { useNotification } from '../../hooks/useNotification';
 
 const TryOnPage = ({ onSave }) => {
   const [selectedClothingType, setSelectedClothingType] = React.useState('shirt');
+  const mannequinRef = React.useRef(null); // Add ref for debug overlay
   
   // Custom hooks
   const bodyMeasurements = useBodyMeasurements();
   const garmentUpload = useGarmentUpload(bodyMeasurements.measurements);
   const unitConversion = useUnitConversion();
   const saveNotification = useNotification(3000);
+  
+  // Cleanup on unmount
+  React.useEffect(() => {
+    console.log('🎬 TryOnPage mounted');
+    
+    return () => {
+      console.log('🧹 TryOnPage unmounting - cleaning up resources');
+      
+      // Clear any garment data
+      garmentUpload.clearGarment();
+      
+      // Force garbage collection hint
+      if (window.gc) {
+        window.gc();
+      }
+    };
+  }, []);
   
   const handleSaveToMoodboard = () => {
     if (onSave) {
@@ -77,7 +96,18 @@ const TryOnPage = ({ onSave }) => {
               showGarment={!!garmentUpload.garmentData} 
               autoRotate={!garmentUpload.garmentData} 
               garmentData={garmentUpload.garmentData}
+              mannequinFrontFacing={180}
+              mannequinRef={mannequinRef}
             />
+            
+            {/* Debug Overlay */}
+            {bodyMeasurements.gender && (
+              <DebugOverlay 
+                mannequinRef={mannequinRef}
+                garmentData={garmentUpload.garmentData}
+                cameraLocked={!!garmentUpload.garmentData}
+              />
+            )}
             
             {/* Top Left - Scene Label */}
             <div className="absolute top-4 left-4 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-black/10">
@@ -115,7 +145,27 @@ const TryOnPage = ({ onSave }) => {
               <div className="absolute top-16 right-4 bg-black text-white px-3 py-1.5 rounded-lg shadow-sm">
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                  <span className="text-xs font-medium">Front View Locked</span>
+                  <span className="text-xs font-medium">Front View Locked • Zoom Only</span>
+                </div>
+              </div>
+            )}
+            
+            {/* Axis Guide (temporary) */}
+            {garmentUpload.garmentData && (
+              <div className="absolute bottom-20 right-4 bg-white/90 backdrop-blur-sm px-3 py-2 rounded-lg shadow-sm border border-black/10">
+                <div className="text-[10px] space-y-1">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-red-500 rounded-sm" />
+                    <span>X-axis (Right)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-green-500 rounded-sm" />
+                    <span>Y-axis (Up)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-blue-500 rounded-sm" />
+                    <span>Z-axis (Forward)</span>
+                  </div>
                 </div>
               </div>
             )}

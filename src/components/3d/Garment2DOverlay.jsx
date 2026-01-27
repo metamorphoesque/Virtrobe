@@ -5,7 +5,7 @@
 // Uses custom shaders for depth and lighting
 // ============================================
 
-import React, { useRef, useMemo, useEffect } from 'react';
+import React, { useRef, useMemo, useEffect, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { garmentVertexShader, garmentFragmentShader } from '../../shaders/garmentShaders';
@@ -18,43 +18,91 @@ const Garment2DOverlay = ({
 }) => {
   const meshRef = useRef();
   const materialRef = useRef();
+  const [mannequinBounds, setMannequinBounds] = useState(null);
 
-  // Calculate garment dimensions from measurements
+  // Get mannequin's actual bounding box
+  useEffect(() => {
+    if (mannequinRef?.current) {
+      const mannequin = mannequinRef.current;
+      
+      // Update world matrix
+      mannequin.updateMatrixWorld(true);
+      
+      // Calculate bounding box
+      const box = new THREE.Box3().setFromObject(mannequin);
+      const size = new THREE.Vector3();
+      const center = new THREE.Vector3();
+      box.getSize(size);
+      box.getCenter(center);
+      
+      console.log('📏 Mannequin bounds:', {
+        width: size.x.toFixed(3),
+        height: size.y.toFixed(3),
+        depth: size.z.toFixed(3),
+        center: {
+          x: center.x.toFixed(3),
+          y: center.y.toFixed(3),
+          z: center.z.toFixed(3)
+        }
+      });
+      
+      setMannequinBounds({ size, center });
+    }
+  }, [mannequinRef, measurements]);
+
+  // Calculate garment dimensions from mannequin bounds
   const dimensions = useMemo(() => {
-    const {
-      chest_cm = 90,
-      waist_cm = 75,
-      shoulders_cm = 40,
-      torso_length_cm = 50,
-      height_cm = 170
-    } = measurements;
+    if (!mannequinBounds) {
+      // Fallback to measurement-based sizing
+      const {
+        chest_cm = 90,
+        torso_length_cm = 50,
+      } = measurements;
 
-    // Convert to meters and scale appropriately
-    const heightInMeters = height_cm / 100;
-    const torsoHeight = (torso_length_cm / 100) * 0.8; // Slightly shorter than actual
-    const chestWidth = (chest_cm / 100) * 0.9;
-    const waistWidth = (waist_cm / 100) * 0.9;
+      return {
+        width: (chest_cm / 100) * 0.9,
+        height: (torso_length_cm / 100) * 0.8,
+        depth: 0.15
+      };
+    }
 
+    // Use actual mannequin dimensions
+    const { size } = mannequinBounds;
+    
+    // Garment covers torso (roughly 40-60% of height)
+    const torsoHeight = size.y * 0.4;
+    const torsoWidth = size.x * 0.95; // Slightly wider than mannequin
+    
     return {
-      width: chestWidth,
+      width: torsoWidth,
       height: torsoHeight,
-      depth: 0.15, // Base depth for garment
-      chestWidth,
-      waistWidth,
+      depth: size.z * 0.15,
+      chestWidth: torsoWidth,
+      waistWidth: torsoWidth * 0.85,
       torsoHeight
     };
-  }, [measurements]);
+  }, [mannequinBounds, measurements]);
 
-  // Calculate position on mannequin
+  // Calculate position on mannequin using actual bounds
   const garmentPosition = useMemo(() => {
-    const { height_cm = 170 } = measurements;
-    const heightInMeters = height_cm / 100;
+    if (!mannequinBounds) {
+      // Fallback positioning
+      const { height_cm = 170 } = measurements;
+      const heightInMeters = height_cm / 100;
+      const y = heightInMeters * 0.35;
+      return [position[0], y, position[2] + 0.05];
+    }
+
+    // Position based on mannequin's actual center
+    const { center, size } = mannequinBounds;
     
-    // Position garment on upper torso
-    const y = heightInMeters * 0.35; // Roughly chest height
+    // Place garment at upper torso (60% up from bottom)
+    const y = center.y + size.y * 0.1;
     
-    return [position[0], y, position[2] + 0.05]; // Slightly in front of mannequin
-  }, [measurements, position]);
+    // IMPORTANT: Mannequin is rotated 90°, so adjust Z position
+    // Since mannequin faces +Z after rotation, garment should be slightly in front
+    return [center.x, y, center.z + 0.1];
+  }, [mannequinBounds, measurements, position]);
 
   // Create shader material
   const shaderMaterial = useMemo(() => {
@@ -62,29 +110,40 @@ const Garment2DOverlay = ({
       return null;
     }
 
-    return new THREE.ShaderMaterial({
-      vertexShader: garmentVertexShader,
-      fragmentShader: garmentFragmentShader,
-      uniforms: {
-        garmentTexture: { value: garmentData.garmentTexture },
-        depthMap: { value: garmentData.depthTexture },
-        normalMap: { value: garmentData.normalTexture },
-        depthIntensity: { value: 0.12 },
-        opacity: { value: 1.0 },
-        lightPosition: { value: new THREE.Vector3(2, 4, 3) },
-        ambientColor: { value: new THREE.Color(0.4, 0.4, 0.4) },
-        normalStrength: { value: 1.2 },
-        mannequinScale: { value: new THREE.Vector3(
-          dimensions.chestWidth,
-          dimensions.torsoHeight,
-          dimensions.depth
-        )}
-      },
-      transparent: true,
-      side: THREE.DoubleSide,
-      depthWrite: true,
-      depthTest: true
-    });
+    try {
+      return new THREE.ShaderMaterial({
+        vertexShader: garmentVertexShader,
+        fragmentShader: garmentFragmentShader,
+        uniforms: {
+          garmentTexture: { value: garmentData.garmentTexture },
+          depthMap: { value: garmentData.depthTexture },
+          normalMap: { value: garmentData.normalTexture },
+          depthIntensity: { value: 0.12 },
+          opacity: { value: 1.0 },
+          lightPosition: { value: new THREE.Vector3(2, 4, 3) },
+          ambientColor: { value: new THREE.Color(0.4, 0.4, 0.4) },
+          normalStrength: { value: 1.2 },
+          mannequinScale: { value: new THREE.Vector3(
+            dimensions.chestWidth || dimensions.width,
+            dimensions.torsoHeight || dimensions.height,
+            dimensions.depth
+          )}
+        },
+        transparent: true,
+        side: THREE.DoubleSide,
+        depthWrite: true,
+        depthTest: true
+      });
+    } catch (error) {
+      console.error('❌ Failed to create shader material:', error);
+      
+      // Fallback: Simple textured material
+      return new THREE.MeshBasicMaterial({
+        map: garmentData.garmentTexture,
+        transparent: true,
+        side: THREE.DoubleSide
+      });
+    }
   }, [garmentData, dimensions]);
 
   // Update material reference
@@ -120,30 +179,34 @@ const Garment2DOverlay = ({
     return null;
   }
 
+  console.log('🎨 Rendering garment overlay:', {
+    position: garmentPosition,
+    dimensions: {
+      width: dimensions.width.toFixed(3),
+      height: dimensions.height.toFixed(3)
+    },
+    hasMannequinBounds: !!mannequinBounds
+  });
+
   return (
-    <group position={garmentPosition}>
+    <group position={garmentPosition} rotation={[0, Math.PI / 2, 0]}>
       <mesh ref={meshRef} material={shaderMaterial}>
         <planeGeometry 
           args={[dimensions.width, dimensions.height, 64, 64]} 
         />
       </mesh>
 
-      {/* Debug helpers (hidden in production) */}
-      {false && (
-        <>
-          {/* Bounding box */}
-          <lineSegments>
-            <edgesGeometry args={[new THREE.PlaneGeometry(dimensions.width, dimensions.height)]} />
-            <lineBasicMaterial color="#00ff00" />
-          </lineSegments>
-          
-          {/* Center point */}
-          <mesh position={[0, 0, 0.01]}>
-            <sphereGeometry args={[0.02]} />
-            <meshBasicMaterial color="#ff0000" />
-          </mesh>
-        </>
-      )}
+      {/* Always visible bounding box for debugging */}
+      <lineSegments>
+        <edgesGeometry args={[new THREE.PlaneGeometry(dimensions.width, dimensions.height)]} />
+        <lineBasicMaterial color="#00ff00" linewidth={2} />
+      </lineSegments>
+      
+      {/* Center point marker */}
+      <mesh position={[0, 0, 0.01]}>
+        <sphereGeometry args={[0.05]} />
+        <meshBasicMaterial color="#ff0000" />
+      </mesh>
     </group>
   );
 };

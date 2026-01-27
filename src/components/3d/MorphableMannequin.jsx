@@ -1,13 +1,18 @@
 // src/components/3d/MorphableMannequin.jsx
-import React, { useRef, useEffect } from 'react';
+// ============================================
+// MORPHABLE MANNEQUIN WITH MODEL CLONING
+// Prevents WebGL context conflicts
+// ============================================
+
+import React, { useRef, useEffect, useMemo, forwardRef } from 'react';
 import { useGLTF } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 
-const MorphableMannequin = ({ 
+const MorphableMannequin = forwardRef(({ 
   measurements, 
   autoRotate = true, 
   standHeight = 0.565
-}) => {
+}, ref) => {
   const group = useRef();
   const meshRef = useRef();
   
@@ -18,18 +23,69 @@ const MorphableMannequin = ({
     
   const { scene } = useGLTF(modelPath);
   
+  // CRITICAL: Clone the scene to avoid conflicts between multiple canvases
+  const clonedScene = useMemo(() => {
+    console.log(`🔄 Cloning ${measurements.gender} mannequin scene...`);
+    const clone = scene.clone(true); // true = deep clone with children
+    console.log('✅ Mannequin scene cloned');
+    return clone;
+  }, [scene, measurements.gender]);
+  
   // Find the mesh with morphTargetDictionary on mount or when model changes
   useEffect(() => {
     meshRef.current = null; // Reset mesh ref when model changes
     
-    scene.traverse((child) => {
+    clonedScene.traverse((child) => {
       if (child.isMesh && child.morphTargetDictionary) {
         meshRef.current = child;
         console.log(`✅ Found ${measurements.gender} morphable mesh:`, child.name);
         console.log('📋 Available shape keys:', Object.keys(child.morphTargetDictionary));
       }
     });
-  }, [scene, measurements.gender]);
+    
+    if (!meshRef.current) {
+      console.warn('⚠️ No morphable mesh found in cloned scene');
+    }
+  }, [clonedScene, measurements.gender]);
+  
+  // Cleanup on unmount - dispose cloned resources
+  useEffect(() => {
+    return () => {
+      console.log(`🧹 Disposing ${measurements.gender} mannequin clone`);
+      
+      clonedScene.traverse((child) => {
+        if (child.isMesh) {
+          // Dispose geometry
+          if (child.geometry) {
+            child.geometry.dispose();
+          }
+          
+          // Dispose materials
+          if (child.material) {
+            if (Array.isArray(child.material)) {
+              child.material.forEach(mat => {
+                mat.dispose();
+                // Dispose textures
+                Object.keys(mat).forEach(key => {
+                  if (mat[key]?.isTexture) {
+                    mat[key].dispose();
+                  }
+                });
+              });
+            } else {
+              child.material.dispose();
+              // Dispose textures
+              Object.keys(child.material).forEach(key => {
+                if (child.material[key]?.isTexture) {
+                  child.material[key].dispose();
+                }
+              });
+            }
+          }
+        }
+      });
+    };
+  }, [clonedScene, measurements.gender]);
   
   // Apply morphing based on measurements
   useEffect(() => {
@@ -175,16 +231,30 @@ const MorphableMannequin = ({
     }
   });
   
+  // Expose group ref to parent via forwardRef
+  useEffect(() => {
+    if (ref) {
+      if (typeof ref === 'function') {
+        ref(group.current);
+      } else {
+        ref.current = group.current;
+      }
+    }
+  }, [ref]);
+  
   return (
     <group 
       ref={group} 
       position={[0, standHeight, 0]}
       scale={0.5}
     >
-      <primitive object={scene} />
+      <primitive object={clonedScene} />
     </group>
   );
-};
+});
+
+// Add display name for better debugging
+MorphableMannequin.displayName = 'MorphableMannequin';
 
 // Preload both models
 useGLTF.preload('/models/female_mannequin.glb');
