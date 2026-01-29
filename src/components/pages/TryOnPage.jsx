@@ -11,7 +11,6 @@ import GenderSelector from '../TryOn/GenderSelector';
 import ClothingSidebar from '../TryOn/ClothingSidebar';
 import MeasurementPanel from '../TryOn/MeasurementPanel';
 import SaveNotification from '../TryOn/SaveNotification';
-import DebugOverlay from '../debug/debugOverlay'; // LOWERCASE to match file
 import { useBodyMeasurements } from '../../hooks/useBodyMeasurements';
 import { useGarmentUpload } from '../../hooks/useGarmentUpload';
 import { useUnitConversion } from '../../hooks/useUnitConversion';
@@ -99,15 +98,6 @@ const TryOnPage = ({ onSave }) => {
               mannequinFrontFacing={180}
               mannequinRef={mannequinRef}
             />
-            
-            {/* Debug Overlay */}
-            {bodyMeasurements.gender && (
-              <DebugOverlay 
-                mannequinRef={mannequinRef}
-                garmentData={garmentUpload.garmentData}
-                cameraLocked={!!garmentUpload.garmentData}
-              />
-            )}
             
             {/* Top Left - Scene Label */}
             <div className="absolute top-4 left-4 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-black/10">
