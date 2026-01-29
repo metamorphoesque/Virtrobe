@@ -35,7 +35,7 @@ const Garment2DOverlay = ({
       box.getSize(size);
       box.getCenter(center);
       
-      console.log('📏 Mannequin bounds:', {
+      console.log(' Mannequin bounds:', {
         width: size.x.toFixed(3),
         height: size.y.toFixed(3),
         depth: size.z.toFixed(3),
@@ -90,18 +90,20 @@ const Garment2DOverlay = ({
       const { height_cm = 170 } = measurements;
       const heightInMeters = height_cm / 100;
       const y = heightInMeters * 0.35;
-      return [position[0], y, position[2] + 0.05];
+      return [0, y, 0.15]; // Slightly in front
     }
 
     // Position based on mannequin's actual center
     const { center, size } = mannequinBounds;
     
-    // Place garment at upper torso (60% up from bottom)
-    const y = center.y + size.y * 0.1;
+    // Place garment at upper torso (chest level)
+    const y = center.y + size.y * 0.1; // Slightly above center
     
-    // IMPORTANT: Mannequin is rotated 90°, so adjust Z position
-    // Since mannequin faces +Z after rotation, garment should be slightly in front
-    return [center.x, y, center.z + 0.1];
+    // CRITICAL: Position on SURFACE not inside
+    // Since mannequin is rotated 90°, we need to offset in X direction
+    const surfaceOffset = (size.z / 2) + 0.05; // Half depth + small gap
+    
+    return [surfaceOffset, y, center.z]; // On the surface in front
   }, [mannequinBounds, measurements, position]);
 
   // Create shader material
@@ -135,7 +137,7 @@ const Garment2DOverlay = ({
         depthTest: true
       });
     } catch (error) {
-      console.error('❌ Failed to create shader material:', error);
+      console.error(' Failed to create shader material:', error);
       
       // Fallback: Simple textured material
       return new THREE.MeshBasicMaterial({
@@ -175,11 +177,11 @@ const Garment2DOverlay = ({
   });
 
   if (!shaderMaterial) {
-    console.warn('⚠️ Garment textures not ready');
+    console.warn(' Garment textures not ready');
     return null;
   }
 
-  console.log('🎨 Rendering garment overlay:', {
+  console.log(' Rendering garment overlay:', {
     position: garmentPosition,
     dimensions: {
       width: dimensions.width.toFixed(3),
@@ -189,7 +191,10 @@ const Garment2DOverlay = ({
   });
 
   return (
-    <group position={garmentPosition} rotation={[0, Math.PI / 2, 0]}>
+    <group 
+      position={garmentPosition} 
+      rotation={[Math.PI, Math.PI / 2, 0]} // Flipped 180° + rotated to match mannequin
+    >
       <mesh ref={meshRef} material={shaderMaterial}>
         <planeGeometry 
           args={[dimensions.width, dimensions.height, 64, 64]} 
@@ -206,6 +211,18 @@ const Garment2DOverlay = ({
       <mesh position={[0, 0, 0.01]}>
         <sphereGeometry args={[0.05]} />
         <meshBasicMaterial color="#ff0000" />
+      </mesh>
+      
+      {/* Top marker (should be at shoulders) */}
+      <mesh position={[0, dimensions.height / 2, 0.01]}>
+        <sphereGeometry args={[0.03]} />
+        <meshBasicMaterial color="#0000ff" />
+      </mesh>
+      
+      {/* Bottom marker (should be at waist) */}
+      <mesh position={[0, -dimensions.height / 2, 0.01]}>
+        <sphereGeometry args={[0.03]} />
+        <meshBasicMaterial color="#ffff00" />
       </mesh>
     </group>
   );

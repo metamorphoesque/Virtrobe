@@ -67,7 +67,7 @@ const DebugOverlay = ({ mannequinRef, garmentData, cameraLocked }) => {
         </div>
 
         <div className="mb-3">
-          <h4 className="text-yellow-400 font-semibold mb-1">🎮 CONTROLS</h4>
+          <h4 className="text-yellow-400 font-semibold mb-1"> CONTROLS</h4>
           <div className="text-white/80 text-[10px] space-y-1">
             <div className="font-bold text-purple-300">Azimuthal: {debugData.controls?.azimuthalAngle}</div>
             <div className="pl-2">└─ {debugData.controls?.azimuthalAngleRad}</div>
