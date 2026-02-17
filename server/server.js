@@ -1,63 +1,70 @@
 // server/server.js
-import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import morgan from 'morgan';
-import config from './config/index.js';
-import { errorHandler } from './middleware/errorHandler.js';
-import garmentRoutes from './routes/garment.routes.js';
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
+const garmentRoutes = require('./routes/garments');
 
 const app = express();
+const PORT = process.env.PORT || 5000;
 
-// ============================================
-// MIDDLEWARE
-// ============================================
-app.use(helmet());
+// Middleware
 app.use(cors({
-  origin: config.clientUrl,
+  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   credentials: true
 }));
-app.use(morgan('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ============================================
-// ROUTES
-// ============================================
-app.use('/api/garment', garmentRoutes);
+// Serve generated GLB models as static files
+app.use('/models', express.static(path.join(__dirname, 'generatedModels')));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// API Routes
+app.use('/api/garments', garmentRoutes);
 
 // Health check
-app.get('/health', (req, res) => {
-  res.json({ 
-    success: true, 
-    message: 'Virtrobe API is running',
-    timestamp: new Date().toISOString()
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'Virtrobe API',
+    provider: 'Hugging Face TripoSR',
+    cost: 'FREE',
+    timestamp: new Date().toISOString(),
+    huggingface_token: !!process.env.HUGGINGFACE_TOKEN
   });
 });
 
-// ============================================
-// ERROR HANDLING
-// ============================================
-app.use(errorHandler);
-
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    error: 'Route not found'
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error('Server error:', err);
+  res.status(500).json({
+    error: err.message || 'Internal server error'
   });
 });
-
-// ============================================
-// START SERVER
-// ============================================
-const PORT = config.port;
 
 app.listen(PORT, () => {
-  console.log('🚀 Virtrobe API Server Started');
-  console.log(`   Port: ${PORT}`);
-  console.log(`   Environment: ${config.nodeEnv}`);
-  console.log(`   Client URL: ${config.clientUrl}`);
-  console.log(`   Modal Endpoint: ${config.modalEndpoint || 'NOT CONFIGURED'}`);
-  console.log('');
+  console.log(`
+╔══════════════════════════════════════════╗
+║   🎨  Virtrobe Backend  |  FREE 3D  🎨   ║
+╚══════════════════════════════════════════╝
+
+  URL:      http://localhost:${PORT}
+  Service:  Hugging Face TripoSR
+  Cost:     FREE
+  Token:    ${process.env.HUGGINGFACE_TOKEN ? '✅ Configured (fast mode)' : '⚠️  Not set (slower - works fine though)'}
+
+  Endpoints:
+  → GET  /api/health
+  → POST /api/garments/generate-sync
+  → GET  /api/garments/availability
+  → GET  /api/garments/list
+
+  ${!process.env.HUGGINGFACE_TOKEN
+    ? '💡 Get a FREE token for 2x speed:\n     https://huggingface.co/settings/tokens'
+    : ''}
+  🚀 Ready!
+  `);
 });
+
+module.exports = app;

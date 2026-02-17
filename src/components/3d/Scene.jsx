@@ -1,6 +1,6 @@
 // src/components/3d/Scene.jsx - COMPLETE WORKING VERSION
 // ============================================
-// MAIN 3D SCENE WITH CAMERA LOCK
+// MAIN 3D SCENE WITH CAMERA LOCK + 3D GARMENT SUPPORT
 // ============================================
 
 import React, { useRef, useEffect, useState } from 'react';
@@ -8,7 +8,7 @@ import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls, Environment, ContactShadows, Grid, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import MorphableMannequin from './MorphableMannequin';
-import Garment2DOverlay from './Garment2DOverlay';
+import GarmentLoader3D from './GarmentLoader3D'; // NEW: 3D mesh loader
 import DebugOverlay from '../debug/debugOverlay';
 
 // Display Stand Component with Clone Support
@@ -209,8 +209,20 @@ const SceneContent = ({
         />
       </group>
       
-      {/* Garment Overlay */}
-      {showGarment && garmentData && (
+      {/* 3D Garment Mesh (NEW!) */}
+      {showGarment && garmentData?.is3D && (
+        <group rotation={[0, Math.PI / 2, 0]}>
+          <GarmentLoader3D 
+            garmentData={garmentData}
+            measurements={measurements}
+            mannequinRef={internalRef}
+            position={[0, 0, 0]}
+          />
+        </group>
+      )}
+      
+      {/* 2D Garment Overlay (Fallback for old system) */}
+      {showGarment && garmentData && !garmentData?.is3D && (
         <Garment2DOverlay 
           garmentData={garmentData}
           measurements={measurements}
@@ -285,7 +297,7 @@ const Scene = (props) => {
           failIfMajorPerformanceCaveat: false
         }}
         onCreated={({ gl }) => {
-          console.log('✅ Main Scene WebGL context created');
+          console.log(' Main Scene WebGL context created');
           gl.domElement.addEventListener('webglcontextlost', handleContextLost, false);
           gl.domElement.addEventListener('webglcontextrestored', handleContextRestored, false);
         }}
