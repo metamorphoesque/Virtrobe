@@ -1,7 +1,7 @@
 // src/hooks/useGarmentUpload.js
 // ============================================
-// GARMENT UPLOAD HOOK - 3D VERSION
-// Uses HuggingFace TripoSR for FREE 3D mesh generation
+// GARMENT UPLOAD HOOK
+// Supports both template loading AND API upload
 // ============================================
 
 import { useState } from 'react';
@@ -15,19 +15,34 @@ export const useGarmentUpload = (measurements) => {
   const [error, setError] = useState(null);
   const [progress, setProgress] = useState(0);
 
+  // ═══════════════════════════════════════════════════════
+  // TEMPLATE MODE — Direct garment data injection
+  // Called when user picks a template from sidebar
+  // ═══════════════════════════════════════════════════════
+  const setGarmentDataDirectly = (data) => {
+    console.log('👗 Loading template directly:', data.name);
+    setGarmentData(data);
+    setError(null);
+    setProgress(100);
+    setUploadedImage(null);
+    setIsProcessing(false);
+  };
+
+  // ═══════════════════════════════════════════════════════
+  // UPLOAD MODE — API-based 3D generation
+  // Called when user uploads a custom image
+  // ═══════════════════════════════════════════════════════
   const handleImageUpload = async (event, garmentType) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
     if (!file.type.startsWith('image/')) {
       setError('Please upload an image file');
       return;
     }
 
-    // Validate file size (max 10MB)
     if (file.size > 10 * 1024 * 1024) {
-      setError('Image too large. Please upload an image under 10MB');
+      setError('Image too large. Max 10MB');
       return;
     }
 
@@ -37,20 +52,15 @@ export const useGarmentUpload = (measurements) => {
 
     try {
       console.log('🎨 Processing garment upload...');
-      console.log('   Type:', garmentType);
-      console.log('   File:', file.name);
-      console.log('   Size:', (file.size / 1024).toFixed(2), 'KB');
-      console.log('   Measurements:', measurements);
+      console.log('   Type:', garmentType, '| File:', file.name);
 
-      // Step 1: Store uploaded image preview
+      // Store preview
       const reader = new FileReader();
       reader.onloadend = () => setUploadedImage(reader.result);
       reader.readAsDataURL(file);
       setProgress(10);
 
-      // Step 2: Send to backend for 3D generation
-      console.log('🚀 Sending to HuggingFace TripoSR...');
-      
+      // Send to backend
       const formData = new FormData();
       formData.append('image', file);
       formData.append('garment_type', garmentType || 'shirt');
@@ -65,14 +75,13 @@ export const useGarmentUpload = (measurements) => {
         throw new Error(errorData.error || 'Upload failed');
       }
 
-      // Step 3: Handle Server-Sent Events stream for progress
+      // Read SSE stream
       const reader2 = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
 
       while (true) {
         const { done, value } = await reader2.read();
-        
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
@@ -80,72 +89,39 @@ export const useGarmentUpload = (measurements) => {
         buffer = lines.pop() || '';
 
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = JSON.parse(line.substring(6));
-            
-            switch (data.type) {
-              case 'progress':
-                setProgress(data.progress);
-                console.log(`   Progress: ${data.progress}% - ${data.status}`);
-                break;
-              
-              case 'info':
-                console.log('   ℹ️ ', data.message);
-                break;
-              
-              case 'complete':
-                setProgress(100);
-                
-                // Build garment data object (matches your old structure)
-                const result = {
-                  // 3D mesh data
-                  modelUrl: data.garment.modelUrl,
-                  taskId: data.garment.taskId,
-                  
-                  // Metadata (compatible with your existing code)
-                  type: garmentType || 'shirt',
-                  fileName: file.name,
-                  fileSize: file.size,
-                  method: '3D-Mesh',
-                  service: 'HuggingFace-TripoSR',
-                  free: true,
-                  
-                  // Dummy color (you can enhance this later)
-                  dominantColor: '#808080',
-                  
-                  // Flag for Scene component to know this is 3D
-                  is3D: true
-                };
+          if (!line.startsWith('data: ')) continue;
+          const data = JSON.parse(line.substring(6));
 
-                console.log('✅ 3D mesh generation complete:', {
-                  modelUrl: result.modelUrl,
-                  method: result.method,
-                  cost: 'FREE'
-                });
-
-                setGarmentData(result);
-                return result;
-              
-              case 'error':
-                throw new Error(data.error);
-            }
+          if (data.type === 'progress') {
+            setProgress(data.progress);
+            console.log(`   ${data.progress}% - ${data.status}`);
+          } else if (data.type === 'info') {
+            console.log('   ℹ️', data.message);
+          } else if (data.type === 'complete') {
+            setProgress(100);
+            const result = {
+              modelUrl: data.garment.modelUrl,
+              taskId: data.garment.taskId,
+              type: garmentType || 'shirt',
+              fileName: file.name,
+              dominantColor: '#808080',
+              is3D: true,
+              isTemplate: false
+            };
+            console.log('✅ 3D mesh ready:', result.modelUrl);
+            setGarmentData(result);
+            return result;
+          } else if (data.type === 'error') {
+            throw new Error(data.error);
           }
         }
       }
 
     } catch (err) {
-      console.error('❌ Failed to generate 3D mesh:', err);
-      
-      // Better error messages
-      let errorMessage = err.message;
-      
-      if (errorMessage.includes('loading')) {
-        errorMessage = 'Model is warming up (20-30s). Please wait and try again.';
-      } else if (errorMessage.includes('ECONNREFUSED')) {
-        errorMessage = 'Backend server not running. Start it with: cd server && node server.js';
-      }
-      
-      setError(errorMessage);
+      console.error('❌ Upload failed:', err);
+      let msg = err.message;
+      if (msg.includes('ECONNREFUSED')) msg = 'Backend not running';
+      setError(msg);
       setGarmentData(null);
       setUploadedImage(null);
       setProgress(0);
@@ -155,7 +131,6 @@ export const useGarmentUpload = (measurements) => {
   };
 
   const clearGarment = () => {
-    console.log('🗑️ Clearing garment data');
     setGarmentData(null);
     setUploadedImage(null);
     setError(null);
@@ -164,21 +139,10 @@ export const useGarmentUpload = (measurements) => {
 
   const retryProcessing = async () => {
     if (!uploadedImage) return;
-    
-    console.log('🔄 Retrying 3D mesh generation...');
-    
-    // Convert data URL back to file for reprocessing
-    const response = await fetch(uploadedImage);
-    const blob = await response.blob();
+    const res = await fetch(uploadedImage);
+    const blob = await res.blob();
     const file = new File([blob], 'garment.jpg', { type: 'image/jpeg' });
-    
-    const mockEvent = {
-      target: {
-        files: [file]
-      }
-    };
-    
-    await handleImageUpload(mockEvent, garmentData?.type || 'shirt');
+    await handleImageUpload({ target: { files: [file] } }, garmentData?.type || 'shirt');
   };
 
   return {
@@ -188,6 +152,7 @@ export const useGarmentUpload = (measurements) => {
     error,
     progress,
     handleImageUpload,
+    setGarmentDataDirectly,  // ← THIS IS THE KEY FUNCTION
     clearGarment,
     retryProcessing
   };
