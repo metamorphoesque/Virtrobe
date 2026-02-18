@@ -30,8 +30,33 @@ const UploadForm = ({ onSuccess }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!glbFile) { setError('GLB file is required'); return; }
     if (!form.name.trim()) { setError('Name is required'); return; }
+    if (!glbFile) { setError('GLB file is required'); return; }
+
+    // ─── Client-side validation (mirrors storage policies) ───
+    if (!glbFile.name.endsWith('.glb')) {
+      setError('GLB file must be a .glb file');
+      return;
+    }
+    if (glbFile.size > 20 * 1024 * 1024) {
+      setError('GLB file too large — max 20MB');
+      return;
+    }
+
+    // Force correct MIME type for GLB files (browsers often detect as octet-stream)
+    const glbFileWithType = new File([glbFile], glbFile.name, { type: 'model/gltf-binary' });
+
+    if (thumbFile) {
+      const allowedThumbTypes = ['image/jpeg', 'image/png', 'image/webp'];
+      if (!allowedThumbTypes.includes(thumbFile.type)) {
+        setError('Thumbnail must be JPEG, PNG, or WebP');
+        return;
+      }
+      if (thumbFile.size > 2 * 1024 * 1024) {
+        setError('Thumbnail too large — max 2MB');
+        return;
+      }
+    }
 
     setLoading(true);
     setError(null);
@@ -50,7 +75,7 @@ const UploadForm = ({ onSuccess }) => {
       await garmentTemplateService.saveTemplate({
         name: form.name.trim(),
         type: form.type,
-        glbFile,
+        glbFile: glbFileWithType,  // Use corrected MIME type
         thumbnailFile: thumbFile,
         colors,
         tags,
@@ -163,7 +188,7 @@ const UploadForm = ({ onSuccess }) => {
             <input
               ref={glbRef}
               type="file"
-              accept=".glb"
+              accept=".glb,model/gltf-binary"
               className="hidden"
               onChange={e => setGlbFile(e.target.files?.[0] || null)}
             />

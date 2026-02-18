@@ -1,137 +1,170 @@
-// src/components/TryOn/ClothingSidebar.jsx (UPDATED)
-import React from 'react';
-import { Upload, Shirt, User, Wind } from 'lucide-react';
+// src/components/TryOn/ClothingSidebar.jsx
+// ============================================
+// CLOTHING SIDEBAR — SUPABASE TEMPLATE MODE
+// ============================================
+
+import React, { useState, useEffect } from 'react';
+import { Upload, ChevronDown, RefreshCw } from 'lucide-react';
+import garmentTemplateService from '../../services/garmentTemplateService';
+
+const TYPE_META = {
+  shirt:     { label: 'Shirts',     icon: '👔' },
+  dress:     { label: 'Dresses',    icon: '👗' },
+  pants:     { label: 'Pants',      icon: '👖' },
+  jacket:    { label: 'Jackets',    icon: '🧥' },
+  skirt:     { label: 'Skirts',     icon: '👘' },
+  shorts:    { label: 'Shorts',     icon: '🩳' },
+  accessory: { label: 'Accessories', icon: '👟' }
+};
 
 const ClothingSidebar = ({
-  selectedType,
-  onSelectType,
-  onImageUpload,
-  isDisabled = false,
-  isProcessing = false
+  selectedType, onSelectType, onSelectTemplate, onImageUpload,
+  isDisabled, isProcessing, selectedTemplateId
 }) => {
-  const clothingTypes = [
-    { id: 'shirt', icon: '👔', label: 'Shirt' },
-    { id: 'tshirt', icon: '👕', label: 'T-Shirt' },
-    { id: 'dress', icon: '👗', label: 'Dress' },
-    { id: 'pants', icon: '👖', label: 'Pants' },
-    { id: 'skirt', icon: '👘', label: 'Skirt' },
-    { id: 'shorts', icon: '🩳', label: 'Shorts' }
-  ];
+  const [templates, setTemplates] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedType, setExpandedType] = useState(null);
 
-  const handleFileChange = (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        alert('Please upload an image file (JPG, PNG, etc.)');
-        return;
-      }
+  useEffect(() => { loadTemplates(); }, []);
 
-      // Validate file size (max 10MB)
-      if (file.size > 10 * 1024 * 1024) {
-        alert('File size must be less than 10MB');
-        return;
-      }
-
-      console.log('📁 File selected:', file.name, '/', selectedType);
-      
-      // Pass event directly - the hook will handle extraction
-      onImageUpload(event);
+  const loadTemplates = async () => {
+    setLoading(true);
+    try {
+      const all = await garmentTemplateService.getAll();
+      const withUrls = await garmentTemplateService.resolveAllUrls(all);
+      setTemplates(withUrls);
+      console.log('📚 Loaded', withUrls.length, 'templates from Supabase');
+    } catch (err) {
+      console.error('Failed to load templates:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  return (
-    <div className="w-64 bg-white border-r border-black/10 flex flex-col">
-      {/* Upload Section */}
-      <div className="p-6 border-b border-black/10">
-        <h3 className="text-sm font-semibold text-black mb-3 uppercase tracking-wide">
-          Upload Garment
-        </h3>
-        
-        <label className={`
-          relative flex flex-col items-center justify-center
-          w-full h-32 border-2 border-dashed rounded-lg
-          cursor-pointer transition-all duration-300
-          ${isDisabled 
-            ? 'border-gray-200 bg-gray-50 cursor-not-allowed opacity-50' 
-            : isProcessing
-              ? 'border-black bg-black/5'
-              : 'border-black/20 hover:border-black hover:bg-gray-50'
-          }
-        `}>
-          <input
-            type="file"
-            className="hidden"
-            accept="image/*"
-            onChange={handleFileChange}
-            disabled={isDisabled || isProcessing}
-          />
-          
-          {isProcessing ? (
-            <div className="flex flex-col items-center gap-2">
-              <div className="w-8 h-8 border-2 border-black/20 border-t-black rounded-full animate-spin" />
-              <span className="text-xs text-black/60">Processing...</span>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-2">
-              <Upload className="w-8 h-8 text-black/40" />
-              <span className="text-xs text-black/60">
-                {isDisabled ? 'Select gender first' : 'Click to upload'}
-              </span>
-            </div>
-          )}
-        </label>
+  const groupedTemplates = templates.reduce((acc, t) => {
+    const type = t.type || 'shirt';
+    if (!acc[type]) acc[type] = [];
+    acc[type].push(t);
+    return acc;
+  }, {});
 
-        {isDisabled && (
-          <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded-lg">
-            <p className="text-xs text-amber-800 flex items-center gap-2">
-              <User className="w-3 h-3" />
-              Please select a gender to continue
-            </p>
+  const handleTypeClick = (type) => {
+    setExpandedType(expandedType === type ? null : type);
+    onSelectType?.(type);
+  };
+
+  const handleTemplateClick = (template) => {
+    if (isDisabled) return;
+    onSelectTemplate?.(template.id, template.type);
+  };
+
+  return (
+    <div className="w-64 bg-white border-r border-black/10 flex flex-col overflow-hidden">
+      <div className="px-4 py-4 border-b border-black/10 flex items-center justify-between">
+        <div>
+          <p className="text-xs font-semibold text-black tracking-wide uppercase">Wardrobe</p>
+          <p className="text-[10px] text-black/40 mt-0.5">
+            {loading ? 'Loading...' : `${templates.length} templates`}
+          </p>
+        </div>
+        <button onClick={loadTemplates} className="p-1.5 hover:bg-black/5 rounded-lg" title="Refresh">
+          <RefreshCw className={`w-3.5 h-3.5 text-black/40 ${loading ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
+
+      {isDisabled && (
+        <div className="mx-3 mt-3 px-3 py-2 bg-black/5 rounded-lg">
+          <p className="text-[10px] text-black/50 text-center">Select gender first</p>
+        </div>
+      )}
+
+      <div className="flex-1 overflow-y-auto py-2">
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin" />
           </div>
+        ) : templates.length === 0 ? (
+          <div className="text-center py-16 px-4">
+            <p className="text-sm text-black/30 mb-1">No templates yet</p>
+            <p className="text-[10px] text-black/20">Upload GLBs via /admin</p>
+          </div>
+        ) : (
+          Object.entries(groupedTemplates).map(([type, typeTemplates]) => {
+            const meta = TYPE_META[type] || { label: type, icon: '👔' };
+            const isExpanded = expandedType === type;
+
+            return (
+              <div key={type}>
+                <button
+                  onClick={() => handleTypeClick(type)}
+                  className={`w-full flex items-center justify-between px-4 py-2.5 text-left transition-colors
+                    ${isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-black/5'}
+                    ${isExpanded ? 'bg-black/5' : ''}`}
+                  disabled={isDisabled}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">{meta.icon}</span>
+                    <span className="text-xs font-semibold text-black">{meta.label}</span>
+                    <span className="text-[10px] text-black/30">({typeTemplates.length})</span>
+                  </div>
+                  <ChevronDown className={`w-3 h-3 text-black/40 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isExpanded && (
+                  <div className="px-3 pb-3 grid grid-cols-2 gap-2">
+                    {typeTemplates.map((template) => {
+                      const isActive = selectedTemplateId === template.id;
+                      return (
+                        <button
+                          key={template.id}
+                          onClick={() => handleTemplateClick(template)}
+                          disabled={isDisabled}
+                          className={`group relative rounded-lg border overflow-hidden transition-all text-left
+                            ${isActive ? 'border-black shadow-sm ring-1 ring-black' : 'border-black/10 hover:border-black/40'}
+                            ${isDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+                        >
+                          <div className="aspect-[3/4] bg-gray-50 flex items-center justify-center">
+                            {template.thumbnail_url ? (
+                              <img src={template.thumbnail_url} alt={template.name} className="w-full h-full object-cover"
+                                onError={(e) => { e.target.style.display = 'none'; }} />
+                            ) : (
+                              <div className="text-2xl opacity-20">{meta.icon}</div>
+                            )}
+                          </div>
+                          <div className="px-2 py-1.5">
+                            <p className="text-[10px] font-medium text-black leading-tight truncate">{template.name}</p>
+                            {template.tags?.length > 0 && (
+                              <div className="flex gap-1 mt-1 flex-wrap">
+                                {template.tags.slice(0, 2).map(tag => (
+                                  <span key={tag} className="text-[8px] px-1 py-0.5 bg-black/5 rounded text-black/50">{tag}</span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          {isActive && (
+                            <div className="absolute top-1.5 right-1.5 w-4 h-4 bg-black rounded-full flex items-center justify-center">
+                              <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
       </div>
 
-      {/* Clothing Type Selection */}
-      <div className="flex-1 p-6 overflow-y-auto">
-        <h3 className="text-sm font-semibold text-black mb-3 uppercase tracking-wide">
-          Select Type
-        </h3>
-        
-        <div className="grid grid-cols-2 gap-2">
-          {clothingTypes.map((type) => (
-            <button
-              key={type.id}
-              onClick={() => onSelectType(type.id)}
-              disabled={isDisabled}
-              className={`
-                p-4 rounded-lg border-2 transition-all duration-200
-                ${selectedType === type.id
-                  ? 'border-black bg-black text-white'
-                  : isDisabled
-                    ? 'border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed'
-                    : 'border-black/20 hover:border-black bg-white text-black'
-                }
-              `}
-            >
-              <div className="text-2xl mb-1">{type.icon}</div>
-              <div className="text-xs font-medium">{type.label}</div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Instructions */}
-      <div className="p-6 border-t border-black/10 bg-gray-50">
-        <h4 className="text-xs font-semibold text-black mb-2 uppercase">
-          Tips
-        </h4>
-        <ul className="text-xs text-black/60 space-y-1">
-          <li>• Use clear, front-facing photos</li>
-          <li>• Remove background if possible</li>
-          <li>• Ensure good lighting</li>
-          <li>• Max file size: 10MB</li>
-        </ul>
+      <div className="border-t border-black/10 p-3">
+        <label className={`flex items-center justify-center gap-2 w-full py-2.5 rounded-lg border border-dashed transition-all
+          ${isDisabled || isProcessing ? 'border-black/10 text-black/30 cursor-not-allowed' : 'border-black/20 text-black/50 hover:border-black hover:text-black cursor-pointer'}`}>
+          <Upload className="w-3 h-3" />
+          <span className="text-[10px] font-medium">{isProcessing ? 'Generating...' : 'Upload custom'}</span>
+          <input type="file" accept="image/*" className="hidden" onChange={onImageUpload} disabled={isDisabled || isProcessing} />
+        </label>
+        <p className="text-[9px] text-black/30 text-center mt-1.5">{isProcessing ? 'Please wait...' : 'Generate from photo'}</p>
       </div>
     </div>
   );
