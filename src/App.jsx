@@ -6,88 +6,61 @@ import HomePage from './components/pages/HomePage';
 import SearchPage from './components/pages/SearchPage';
 import TryOnPage from './components/pages/TryOnPage';
 import MoodboardPage from './components/pages/MoodboardPage';
+import AdminPage from './components/pages/AdminPage'; // NEW
 import { useMoodboard } from './hooks/useMoodboard';
 
 // ============================================
 // BRAND LOGO ANIMATION - "Virtrobe" ↔ "Virtual Wardrobe"
-// Center-aligned morphing animation
 // ============================================
 const BrandLogo = () => {
   const [isExpanded, setIsExpanded] = useState(false);
   
   useEffect(() => {
     const animationCycle = () => {
-      // STEP 1: Display "Virtrobe" in center (compact state)
       setIsExpanded(false);
-      
-      // STEP 2-3: Trigger expansion after 2.5 seconds
       setTimeout(() => setIsExpanded(true), 2500);
-      
-      // STEP 4-5: Trigger contraction after 3 seconds of being expanded
       setTimeout(() => setIsExpanded(false), 5500);
     };
-    
-    // Run immediately on mount
     animationCycle();
-    // Repeat every 8 seconds
     const interval = setInterval(animationCycle, 8000);
-    
     return () => clearInterval(interval);
   }, []);
   
   return (
-    // Container: centered alignment with overflow hidden for smooth transitions
     <div className="relative h-12 flex items-center justify-center overflow-hidden w-80">
       <div className="relative flex items-center justify-center">
-        
-        {/* LAYER 1: "Virt" - Compact state (STEP 1) and transition position (STEP 2, 4) */}
         <span 
           className={`text-black text-3xl font-bold transition-all duration-1000 ease-in-out absolute ${
-            isExpanded 
-              ? 'opacity-0 -translate-x-12' // STEP 2: Fade out and move left when expanding
-              : 'opacity-100 translate-x-0'  // STEP 1 & 4: Visible at center when compact
+            isExpanded ? 'opacity-0 -translate-x-12' : 'opacity-100 translate-x-0'
           }`}
-          style={{ left: 'calc(50% - 60px)' }} // Center positioning for "Virt"
+          style={{ left: 'calc(50% - 60px)' }}
         >
           Virt
         </span>
-        
-        {/* LAYER 2: "Virtual" - Expanded state (STEP 2) */}
         <span 
           className={`text-black text-3xl font-bold transition-all duration-1000 ease-in-out absolute ${
-            isExpanded 
-              ? 'opacity-100 translate-x-0' // STEP 2: Fade in at left when expanding
-              : 'opacity-0 translate-x-12'  // STEP 4: Fade out and move right when contracting
+            isExpanded ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-12'
           }`}
-          style={{ left: 'calc(50% - 140px)' }} // Left position for "Virtual"
+          style={{ left: 'calc(50% - 140px)' }}
         >
           Virtual
         </span>
-        
-        {/* LAYER 3: "robe" - Compact state (STEP 1) and transition position (STEP 3, 5) */}
         <span 
           className={`text-black text-3xl font-bold transition-all duration-1000 ease-in-out absolute ${
-            isExpanded 
-              ? 'opacity-0 translate-x-12'  // STEP 3: Fade out and move right when expanding
-              : 'opacity-100 translate-x-0'  // STEP 1 & 5: Visible at center when compact
+            isExpanded ? 'opacity-0 translate-x-12' : 'opacity-100 translate-x-0'
           }`}
-          style={{ right: 'calc(50% - 60px)' }} // Center positioning for "robe"
+          style={{ right: 'calc(50% - 60px)' }}
         >
           robe
         </span>
-        
-        {/* LAYER 4: "Wardrobe" - Expanded state (STEP 3) */}
         <span 
           className={`text-black text-3xl font-bold transition-all duration-1000 ease-in-out absolute ${
-            isExpanded 
-              ? 'opacity-100 translate-x-0' // STEP 3: Fade in at right when expanding
-              : 'opacity-0 -translate-x-12' // STEP 5: Fade out and move left when contracting
+            isExpanded ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-12'
           }`}
-          style={{ right: 'calc(50% - 145px)' }} // Right position for "Wardrobe"
+          style={{ right: 'calc(50% - 145px)' }}
         >
           Wardrobe
         </span>
-        
       </div>
     </div>
   );
@@ -100,25 +73,19 @@ const Navigation = ({ currentTab, onTabChange, children }) => {
   const [searchQuery, setSearchQuery] = useState('');
   
   const navLinks = [
-    { id: 'home', label: 'Explore', icon: Grid3x3 },
-    { id: 'tryon', label: 'Try On', icon: Sparkles },
-    { id: 'moodboard', label: 'Saved', icon: Heart },
+    { id: 'home',      label: 'Explore', icon: Grid3x3  },
+    { id: 'tryon',     label: 'Try On',  icon: Sparkles },
+    { id: 'moodboard', label: 'Saved',   icon: Heart    },
   ];
 
   return (
     <div className="min-h-screen bg-white">
-      
-      {/* TOP NAV BAR */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex items-center justify-between h-16">
-
-            {/* LEFT: BRAND LOGO */}
             <div className="flex-shrink-0">
               <BrandLogo />
             </div>
-
-            {/* CENTER: SEARCH BAR */}
             <div className="flex-1 max-w-xl mx-8">
               <div className="relative">
                 <input
@@ -131,29 +98,22 @@ const Navigation = ({ currentTab, onTabChange, children }) => {
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               </div>
             </div>
-
-            {/* RIGHT: PROFILE */}
             <div className="flex items-center gap-4">
               <button className="w-10 h-10 rounded-full bg-black flex items-center justify-center hover:bg-gray-800 transition-colors duration-200">
                 <User className="w-5 h-5 text-white" />
               </button>
             </div>
-
           </div>
           
-          {/* SECONDARY NAV - Page Links */}
           <div className="flex items-center justify-center gap-1 h-12 border-t border-gray-50">
             {navLinks.map(({ id, label, icon: Icon }) => {
               const active = currentTab === id;
-              
               return (
                 <button
                   key={id}
                   onClick={() => onTabChange(id)}
                   className={`flex items-center gap-2 px-6 py-2 rounded-full font-light text-sm transition-all duration-200 ${
-                    active
-                      ? 'bg-black text-white'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-black'
+                    active ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-black'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -165,13 +125,11 @@ const Navigation = ({ currentTab, onTabChange, children }) => {
         </div>
       </nav>
 
-      {/* PAGE CONTENT with top padding to account for fixed nav */}
       <main className="pt-28 px-6 pb-20">
         <div className="max-w-7xl mx-auto">
           {children}
         </div>
       </main>
-
     </div>
   );
 };
@@ -189,7 +147,7 @@ const WelcomePage = ({ onComplete }) => {
           </div>
           <h1 className="text-5xl font-light tracking-tight">Welcome to Virtual Wardrobe</h1>
           <p className="text-xl text-gray-500 font-light">
-            Your personal AI-powered styling assistant
+            Your personal styling assistant
           </p>
         </div>
 
@@ -197,7 +155,6 @@ const WelcomePage = ({ onComplete }) => {
           <p className="text-center text-gray-600 font-light mb-8">
             Choose your mannequin preference to get started
           </p>
-
           <div className="grid grid-cols-2 gap-4">
             <button
               onClick={() => onComplete('female')}
@@ -206,7 +163,6 @@ const WelcomePage = ({ onComplete }) => {
               <div className="text-6xl mb-4">👗</div>
               <div className="text-lg font-light text-black">Feminine</div>
             </button>
-
             <button
               onClick={() => onComplete('male')}
               className="p-10 bg-white border-2 border-gray-100 rounded-2xl hover:border-black hover:shadow-lg transition-all duration-300"
@@ -229,19 +185,20 @@ function App() {
   const [userGender, setUserGender] = useState(null);
   const [currentTab, setCurrentTab] = useState('home');
   
-  // Moodboard Hook
   const { savedOutfits, saveOutfit, removeOutfit } = useMoodboard();
   
-  // Community Outfits (Mock Data for HomePage)
   const [outfits, setOutfits] = useState([
-    { id: 1, title: 'Summer Breeze', description: 'Light linen perfection', user: 'StyleQueen', likes: 234, liked: false, emoji: '👗' },
-    { id: 2, title: 'Business Casual', description: 'Office ready elegance', user: 'ProFashion', likes: 189, liked: false, emoji: '🧥' },
-    { id: 3, title: 'Urban Chic', description: 'Street style vibes', user: 'TrendSetter', likes: 312, liked: false, emoji: '👔' },
-    { id: 4, title: 'Evening Elegance', description: 'Night out perfection', user: 'GlamGuru', likes: 456, liked: false, emoji: '👠' },
-    { id: 5, title: 'Cozy Comfort', description: 'Athleisure at its best', user: 'FitFashion', likes: 278, liked: false, emoji: '👟' },
-    { id: 6, title: 'Vintage Revival', description: 'Timeless retro charm', user: 'ClassicStyle', likes: 167, liked: false, emoji: '🎩' },
+    { id: 1, title: 'Summer Breeze',     description: 'Light linen perfection',  user: 'StyleQueen',  likes: 234, liked: false, emoji: '👗' },
+    { id: 2, title: 'Business Casual',   description: 'Office ready elegance',   user: 'ProFashion',  likes: 189, liked: false, emoji: '🧥' },
+    { id: 3, title: 'Urban Chic',        description: 'Street style vibes',      user: 'TrendSetter', likes: 312, liked: false, emoji: '👔' },
+    { id: 4, title: 'Evening Elegance',  description: 'Night out perfection',    user: 'GlamGuru',    likes: 456, liked: false, emoji: '👠' },
+    { id: 5, title: 'Cozy Comfort',      description: 'Athleisure at its best',  user: 'FitFashion',  likes: 278, liked: false, emoji: '👟' },
+    { id: 6, title: 'Vintage Revival',   description: 'Timeless retro charm',    user: 'ClassicStyle', likes: 167, liked: false, emoji: '🎩' },
   ]);
   
+  // Check if current URL is /admin — simple routing without react-router
+  const isAdminRoute = window.location.pathname === '/admin';
+
   const handleWelcomeComplete = (gender) => {
     setUserGender(gender);
     setHasCompletedWelcome(true);
@@ -257,15 +214,17 @@ function App() {
   
   const handleSaveOutfit = (outfit) => {
     saveOutfit(outfit);
-    console.log('Outfit saved to collection!', outfit);
   };
   
   const handleSearch = (searchData) => {
     console.log('Search initiated:', searchData);
-    setTimeout(() => {
-      setCurrentTab('tryon');
-    }, 1500);
+    setTimeout(() => setCurrentTab('tryon'), 1500);
   };
+
+  // ── Admin route — bypasses welcome screen entirely ──
+  if (isAdminRoute) {
+    return <AdminPage />;
+  }
   
   if (!hasCompletedWelcome) {
     return <WelcomePage onComplete={handleWelcomeComplete} />;
@@ -276,20 +235,14 @@ function App() {
       {currentTab === 'home' && (
         <HomePage outfits={outfits} onLike={handleLike} />
       )}
-      
       {currentTab === 'search' && (
         <SearchPage onSearch={handleSearch} />
       )}
-      
       {currentTab === 'tryon' && (
         <TryOnPage onSave={handleSaveOutfit} userGender={userGender} />
       )}
-      
       {currentTab === 'moodboard' && (
-        <MoodboardPage 
-          savedOutfits={savedOutfits} 
-          onRemove={removeOutfit} 
-        />
+        <MoodboardPage savedOutfits={savedOutfits} onRemove={removeOutfit} />
       )}
     </Navigation>
   );
