@@ -1,53 +1,22 @@
 // src/components/3d/GarmentLoader3D.jsx
 // ============================================
-// GARMENT LOADER WITH BROWSER-BASED STANDARDIZATION
-// Auto-detects and fixes orientation client-side
+// SIMPLE GARMENT LOADER - MANUAL ROTATION
+// Just rotate until it looks right
 // ============================================
 
 import React, { useRef, useMemo, useEffect, useState, Suspense } from 'react';
 import { useLoader } from '@react-three/fiber';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import * as THREE from 'three';
-import meshStandardizer from '../../utils/meshStandardizer';
 
 // Garment positioning configs
 const ATTACHMENT_POINTS = {
-  shirt: {
-    anchor: 'chest',
-    yOffset: 0.3,
-    heightRatio: 0.35,
-    forwardOffset: 0.05
-  },
-  dress: {
-    anchor: 'chest',
-    yOffset: 0.2,
-    heightRatio: 0.70,
-    forwardOffset: 0.05
-  },
-  pants: {
-    anchor: 'waist',
-    yOffset: -0.1,
-    heightRatio: 0.45,
-    forwardOffset: 0.05
-  },
-  jacket: {
-    anchor: 'chest',
-    yOffset: 0.3,
-    heightRatio: 0.40,
-    forwardOffset: 0.08
-  },
-  skirt: {
-    anchor: 'waist',
-    yOffset: -0.15,
-    heightRatio: 0.30,
-    forwardOffset: 0.05
-  },
-  shorts: {
-    anchor: 'waist',
-    yOffset: -0.2,
-    heightRatio: 0.25,
-    forwardOffset: 0.05
-  }
+  shirt: { yOffset: 0.3, heightRatio: 0.35, forwardOffset: 0.05 },
+  dress: { yOffset: 0.2, heightRatio: 0.70, forwardOffset: 0.05 },
+  pants: { yOffset: -0.1, heightRatio: 0.45, forwardOffset: 0.05 },
+  jacket: { yOffset: 0.3, heightRatio: 0.40, forwardOffset: 0.08 },
+  skirt: { yOffset: -0.15, heightRatio: 0.30, forwardOffset: 0.05 },
+  shorts: { yOffset: -0.2, heightRatio: 0.25, forwardOffset: 0.05 }
 };
 
 const GarmentLoader3D = ({ garmentData, measurements, mannequinRef }) => {
@@ -58,13 +27,6 @@ const GarmentLoader3D = ({ garmentData, measurements, mannequinRef }) => {
   if (!modelUrl) return null;
 
   const fullModelUrl = modelUrl.startsWith('http') ? modelUrl : `http://localhost:5000${modelUrl}`;
-  
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('🎯 GARMENT LOADER (BROWSER STANDARDIZATION)');
-  console.log('   Name:', garmentData.name || 'Unknown');
-  console.log('   Type:', garmentData.type);
-  console.log('   URL:', fullModelUrl);
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
   // Measure mannequin
   useEffect(() => {
@@ -78,15 +40,6 @@ const GarmentLoader3D = ({ garmentData, measurements, mannequinRef }) => {
       box.getSize(size);
       box.getCenter(center);
       
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('👤 MANNEQUIN REFERENCE');
-      console.log('   Position:', mannequin.position.toArray().map(n => n.toFixed(3)));
-      console.log('   Size:', size.toArray().map(n => n.toFixed(3)));
-      console.log('   Center:', center.toArray().map(n => n.toFixed(3)));
-      console.log('   Bottom Y:', (center.y - size.y / 2).toFixed(3));
-      console.log('   COORDINATE SYSTEM: Front = +X, Up = +Y');
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      
       setMannequinData({ 
         size, 
         center, 
@@ -97,51 +50,22 @@ const GarmentLoader3D = ({ garmentData, measurements, mannequinRef }) => {
   }, [mannequinRef, measurements]);
 
   const garmentTransform = useMemo(() => {
-    if (!mannequinData) {
-      return null;
-    }
+    if (!mannequinData) return null;
 
     const { size, center, bottom } = mannequinData;
     const garmentType = garmentData.type || 'shirt';
     const config = ATTACHMENT_POINTS[garmentType] || ATTACHMENT_POINTS.shirt;
 
-    // SCALE: garments standardized to height = 1.0
-    // Scale to match mannequin's target height
     const targetHeight = size.y * config.heightRatio;
-    const scale = targetHeight / 1.0;  // Divide by 1.0 (standardized height)
-
-    // POSITION:
-    // Y: from bottom + offset
     const posY = bottom + (size.y * (0.5 + config.yOffset));
-    
-    // X: mannequin front + offset
     const posX = mannequinData.position.x + (size.x / 2) + config.forwardOffset;
-    
-    // Z: centered
     const posZ = center.z;
 
-    // ROTATION:
-    // After browser standardization, garment front is +Z
-    // Mannequin front is +X
-    // Rotate garment -90° around Y to align
-    const rotation = [0, -Math.PI / 2, 0];
-
-    const transform = { scale, position: [posX, posY, posZ], rotation };
-
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('👗 GARMENT PLACEMENT');
-    console.log('   Type:', garmentType);
-    console.log('   Attachment:', config.anchor);
-    console.log('   Y Offset:', (config.yOffset * 100).toFixed(0) + '%');
-    console.log('   Target Height:', targetHeight.toFixed(3));
-    console.log('   Transform:');
-    console.log('     Scale:', scale.toFixed(3));
-    console.log('     Position:', transform.position.map(n => n.toFixed(3)));
-    console.log('     Rotation:', transform.rotation.map(n => (n * 180 / Math.PI).toFixed(1) + '°'));
-    console.log('   Logic: Garment +Z → Mannequin +X (rotate -90°)');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-    return transform;
+    return { 
+      targetHeight,
+      position: [posX, posY, posZ],
+      config
+    };
   }, [mannequinData, garmentData]);
 
   return (
@@ -160,64 +84,70 @@ const GarmentMesh = ({ modelUrl, transform, meshRef, garmentData }) => {
   const gltf = useLoader(GLTFLoader, modelUrl);
   
   const garmentMesh = useMemo(() => {
-    const rawMesh = gltf.scene.clone();
+    if (!transform) return gltf.scene.clone();
+    
+    const mesh = gltf.scene.clone();
+    
+    // Measure garment
+    mesh.updateMatrixWorld(true);
+    const bbox = new THREE.Box3().setFromObject(mesh);
+    const garmentSize = new THREE.Vector3();
+    const garmentCenter = new THREE.Vector3();
+    bbox.getSize(garmentSize);
+    bbox.getCenter(garmentCenter);
+    
+    // Find tallest dimension (that's the height)
+    const height = Math.max(garmentSize.x, garmentSize.y, garmentSize.z);
+    const scale = transform.targetHeight / height;
     
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('📦 RAW GARMENT LOADED');
+    console.log('📦 GARMENT:', garmentData.name || 'Unknown');
+    console.log('   Type:', garmentData.type);
+    console.log('   Raw Size:', garmentSize.toArray().map(n => n.toFixed(3)));
+    console.log('   Scale:', scale.toFixed(3));
     
-    // STEP 1: STANDARDIZE THE MESH (browser-based)
-    const standardizedMesh = meshStandardizer.applyStandardization(rawMesh);
+    // ═══════════════════════════════════════════════════════
+    // ROTATION - CHANGE THIS NUMBER UNTIL IT LOOKS RIGHT
+    // ═══════════════════════════════════════════════════════
     
+    // Default rotations per garment type (Y-axis rotation in degrees)
+    const rotationOverrides = {
+      // Library templates
+      'aa0d2ef7-318a-4274-a0cb-1f3258894529': 90,  // Simple t-shirt (change this!)
+      '7e342658-b3d3-4127-a155-1bfe2ff0fab5': 90,  // Pants (change this!)
+    };
+    
+    // Try to get rotation from database or use default
+    const rotationDeg = garmentData.rotation_y_deg || 
+                        rotationOverrides[garmentData.taskId] || 
+                        rotationOverrides[garmentData.id] || 
+                        0;
+    
+    const rotationRad = (rotationDeg * Math.PI) / 180;
+    
+    console.log('   Rotation Y:', rotationDeg + '°');
+    console.log('   ℹ️  TO FIX: Change rotation_y_deg in database');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('📏 STANDARDIZED GARMENT STATE');
     
-    // Verify standardization
-    const bbox = new THREE.Box3().setFromObject(standardizedMesh);
-    const size = new THREE.Vector3();
-    const center = new THREE.Vector3();
-    bbox.getSize(size);
-    bbox.getCenter(center);
+    // Center garment at origin
+    mesh.position.sub(garmentCenter);
     
-    console.log('   Size:', size.toArray().map(n => n.toFixed(3)));
-    console.log('   Center:', center.toArray().map(n => n.toFixed(3)));
-    console.log('   Position:', standardizedMesh.position.toArray().map(n => n.toFixed(3)));
-    console.log('   Rotation:', standardizedMesh.rotation.toArray().slice(0,3).map(n => (n * 180 / Math.PI).toFixed(1) + '°'));
-    console.log('   Expected: Height ~1.0, Origin (0,0,0), Front +Z, Up +Y');
-    
-    if (!transform) {
-      console.log('⏳ Waiting for mannequin data...');
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      return standardizedMesh;
-    }
-    
-    // STEP 2: APPLY FINAL TRANSFORM (positioning on mannequin)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('🎯 APPLYING MANNEQUIN PLACEMENT');
-    
-    standardizedMesh.scale.set(transform.scale, transform.scale, transform.scale);
-    standardizedMesh.position.set(...transform.position);
-    standardizedMesh.rotation.set(...transform.rotation);
+    // Apply transforms
+    mesh.rotation.y = rotationRad;
+    mesh.scale.set(scale, scale, scale);
+    mesh.position.set(...transform.position);
     
     // Enable shadows
-    standardizedMesh.traverse((child) => {
+    mesh.traverse((child) => {
       if (child.isMesh) {
         child.castShadow = true;
         child.receiveShadow = true;
       }
     });
 
-    standardizedMesh.updateMatrixWorld(true);
+    mesh.updateMatrixWorld(true);
     
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('✅ GARMENT READY');
-    console.log('   Name:', garmentData.name || 'Unknown');
-    console.log('   Type:', garmentData.type);
-    console.log('   Final Position:', standardizedMesh.position.toArray().map(n => n.toFixed(3)));
-    console.log('   Final Rotation:', standardizedMesh.rotation.toArray().slice(0,3).map(n => (n * 180 / Math.PI).toFixed(1) + '°'));
-    console.log('   Final Scale:', standardizedMesh.scale.toArray().map(n => n.toFixed(3)));
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    
-    return standardizedMesh;
+    return mesh;
   }, [gltf, transform, garmentData]);
 
   return <primitive ref={meshRef} object={garmentMesh} />;
