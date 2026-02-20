@@ -8,6 +8,8 @@ import React, { useRef, useMemo, useEffect, useState, Suspense } from 'react';
 import { useLoader } from '@react-three/fiber';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import * as THREE from 'three';
+import { calculateAlignmentRotation, addFrontMarker, tagFrontDirection, detectFrontDirection } from '../../utils/frontFaceMarker';
+import meshStandardizer from '../../utils/meshStandardizer';
 
 // Garment positioning configs
 const ATTACHMENT_POINTS = {
@@ -57,9 +59,10 @@ const GarmentLoader3D = ({ garmentData, measurements, mannequinRef }) => {
     const config = ATTACHMENT_POINTS[garmentType] || ATTACHMENT_POINTS.shirt;
 
     const targetHeight = size.y * config.heightRatio;
+    // Position garment centered on torso and slightly in front of mannequin
     const posY = bottom + (size.y * (0.5 + config.yOffset));
-    const posX = mannequinData.position.x + (size.x / 2) + config.forwardOffset;
-    const posZ = center.z;
+    const posX = center.x;
+    const posZ = center.z + config.forwardOffset;
 
     return { 
       targetHeight,
@@ -75,20 +78,25 @@ const GarmentLoader3D = ({ garmentData, measurements, mannequinRef }) => {
         transform={garmentTransform} 
         meshRef={meshRef}
         garmentData={garmentData}
+        mannequinRef={mannequinRef}
       />
     </Suspense>
   );
 };
 
-const GarmentMesh = ({ modelUrl, transform, meshRef, garmentData }) => {
+const GarmentMesh = ({ modelUrl, transform, meshRef, garmentData, mannequinRef }) => {
   const gltf = useLoader(GLTFLoader, modelUrl);
   
   const garmentMesh = useMemo(() => {
     if (!transform) return gltf.scene.clone();
     
     const mesh = gltf.scene.clone();
+
+    // 1) STANDARDIZE GARMENT MESH
+    // Canonical target: origin at (0,0,0), front +Z, up +Y, normalized height.
+    meshStandardizer.applyStandardization(mesh);
     
-    // Measure garment
+    // Measure garment AFTER standardization so all garments share a common basis
     mesh.updateMatrixWorld(true);
     const bbox = new THREE.Box3().setFromObject(mesh);
     const garmentSize = new THREE.Vector3();
@@ -96,44 +104,38 @@ const GarmentMesh = ({ modelUrl, transform, meshRef, garmentData }) => {
     bbox.getSize(garmentSize);
     bbox.getCenter(garmentCenter);
     
-    // Find tallest dimension (that's the height)
-    const height = Math.max(garmentSize.x, garmentSize.y, garmentSize.z);
-    const scale = transform.targetHeight / height;
-    
+    // Use vertical extent (Y) as garment height when possible
+    const maxExtent = Math.max(garmentSize.x, garmentSize.y, garmentSize.z);
+    const garmentHeight = garmentSize.y || maxExtent;
+    const scale = transform.targetHeight / garmentHeight;
+
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('📦 GARMENT:', garmentData.name || 'Unknown');
     console.log('   Type:', garmentData.type);
     console.log('   Raw Size:', garmentSize.toArray().map(n => n.toFixed(3)));
     console.log('   Scale:', scale.toFixed(3));
-    
-    // ═══════════════════════════════════════════════════════
-    // ROTATION - CHANGE THIS NUMBER UNTIL IT LOOKS RIGHT
-    // ═══════════════════════════════════════════════════════
-    
-    // Default rotations per garment type (Y-axis rotation in degrees)
-    const rotationOverrides = {
-      // Library templates
-      'aa0d2ef7-318a-4274-a0cb-1f3258894529': 90,  // Simple t-shirt (change this!)
-      '7e342658-b3d3-4127-a155-1bfe2ff0fab5': 90,  // Pants (change this!)
-    };
-    
-    // Try to get rotation from database or use default
-    const rotationDeg = garmentData.rotation_y_deg || 
-                        rotationOverrides[garmentData.taskId] || 
-                        rotationOverrides[garmentData.id] || 
-                        0;
-    
-    const rotationRad = (rotationDeg * Math.PI) / 180;
-    
-    console.log('   Rotation Y:', rotationDeg + '°');
-    console.log('   ℹ️  TO FIX: Change rotation_y_deg in database');
+
+    // 2) FRONT-ALIGNMENT IN STANDARD SPACE
+    // After standardization, the garment's logical front is +Z.
+    const garmentFront = '+Z';
+
+    // Read mannequin's true front from its geometry/userData if available
+    let mannequinFront = '+Z';
+    if (mannequinRef?.current) {
+      mannequinFront = detectFrontDirection(mannequinRef.current);
+    }
+
+    const [rx, ry, rz] = calculateAlignmentRotation(garmentFront, mannequinFront);
+
+    console.log('   Standardized garment front:', garmentFront);
+    console.log('   Aligning garment front to mannequin front:', mannequinFront);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     
     // Center garment at origin
     mesh.position.sub(garmentCenter);
     
-    // Apply transforms
-    mesh.rotation.y = rotationRad;
+    // Apply transforms: alignment rotation, scale, and final position
+    mesh.rotation.set(rx, ry, rz);
     mesh.scale.set(scale, scale, scale);
     mesh.position.set(...transform.position);
     
@@ -145,10 +147,14 @@ const GarmentMesh = ({ modelUrl, transform, meshRef, garmentData }) => {
       }
     });
 
+    // Optional: tag and visualize garment front for debugging
+    tagFrontDirection(mesh, garmentFront);
+    addFrontMarker(mesh, garmentFront, 0.3, 0xff0000);
+
     mesh.updateMatrixWorld(true);
     
     return mesh;
-  }, [gltf, transform, garmentData]);
+  }, [gltf, transform, garmentData, mannequinRef]);
 
   return <primitive ref={meshRef} object={garmentMesh} />;
 };

@@ -7,6 +7,7 @@
 import React, { useRef, useEffect, useMemo, forwardRef } from 'react';
 import { useGLTF } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
+import { tagFrontDirection, addFrontMarker } from '../../utils/frontFaceMarker';
 
 const MorphableMannequin = forwardRef(({ 
   measurements, 
@@ -30,6 +31,20 @@ const MorphableMannequin = forwardRef(({
     console.log('✅ Mannequin scene cloned');
     return clone;
   }, [scene, measurements.gender]);
+
+  // Tag mannequin front direction and add a debug marker arrow
+  useEffect(() => {
+    if (!group.current) return;
+
+    // Assume mannequin's chest faces +Z in its local space (rotated by parent group).
+    const mannequinFront = '+Z';
+
+    // Visible arrow to verify front direction; rotates with the group.
+    addFrontMarker(group.current, mannequinFront, 0.4, 0x00ff00);
+
+    // Persist front direction on the mesh for consumers (e.g. garments)
+    tagFrontDirection(group.current, mannequinFront);
+  }, []);
   
   // Find the mesh with morphTargetDictionary on mount or when model changes
   useEffect(() => {
@@ -86,6 +101,8 @@ const MorphableMannequin = forwardRef(({
       });
     };
   }, [clonedScene, measurements.gender]);
+
+  // (duplicate front-tagging effect removed; kept single source of truth above)
   
   // Apply morphing based on measurements
   useEffect(() => {
