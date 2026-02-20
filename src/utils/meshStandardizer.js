@@ -1,259 +1,196 @@
 // src/utils/meshStandardizer.js
-// ============================================
-// BROWSER-BASED MESH STANDARDIZATION
-// Detects orientation and applies transforms in Three.js
-// No Blender, no server processing needed
-// ============================================
 
 import * as THREE from 'three';
 
-/**
- * STANDARDIZATION TARGET:
- * - Origin: World center (0, 0, 0)
- * - Front: +Z axis
- * - Up: +Y axis
- * - Scale: Normalized (tallest dimension = 1.0)
- */
+// ─────────────────────────────────────────────
+//  ASSET ORIENTATION REGISTRY
+// ─────────────────────────────────────────────
+const ASSET_ORIENTATIONS = {
+  triposr:  { up: 'Y', front: '-Z' },
+  template: { up: 'Y', front: '+Z' }, // update once confirmed via console
+  unknown:  { up: 'Y', front: '+Z' }, // update once confirmed via console
+};
 
-class MeshStandardizer {
-  
-  /**
-   * Analyze mesh and determine its current orientation
-   */
-  analyzeMesh(mesh) {
-    // Clone to avoid modifying original
-    const clone = mesh.clone();
-    clone.updateMatrixWorld(true);
-    
-    // Get bounding box
-    const bbox = new THREE.Box3().setFromObject(clone);
-    const size = new THREE.Vector3();
-    const center = new THREE.Vector3();
-    bbox.getSize(size);
-    bbox.getCenter(center);
-    
-    console.log('📊 MESH ANALYSIS:');
-    console.log('   Original Size:', size.toArray().map(n => n.toFixed(3)));
-    console.log('   Original Center:', center.toArray().map(n => n.toFixed(3)));
-    console.log('   Original Rotation:', clone.rotation.toArray().slice(0, 3).map(n => (n * 180 / Math.PI).toFixed(1) + '°'));
-    
-    // Determine which axis is "up" (should be Y)
-    const upAxis = this.detectUpAxis(size);
-    
-    // Determine which axis is "front" (should be Z)
-    const frontAxis = this.detectFrontAxis(mesh, size, upAxis);
-    
-    return {
-      size,
-      center,
-      upAxis,
-      frontAxis,
-      needsStandardization: upAxis !== 'Y' || frontAxis !== 'Z'
-    };
-  }
-  
-  /**
-   * Detect which axis is "up" (tallest dimension)
-   */
-  detectUpAxis(size) {
-    const axes = {
-      'X': size.x,
-      'Y': size.y,
-      'Z': size.z
-    };
-    
-    // Tallest dimension is "up"
-    const upAxis = Object.keys(axes).reduce((a, b) => axes[a] > axes[b] ? a : b);
-    
-    console.log('   Detected UP axis:', upAxis, `(${axes[upAxis].toFixed(3)} units)`);
-    return upAxis;
-  }
-  
-  /**
-   * Detect which axis is "front" by analyzing vertex distribution
-   */
-  detectFrontAxis(mesh, size, upAxis) {
-    // Strategy: Front usually has more vertex density (more detail)
-    // Count vertices in each direction
-    
-    const vertices = [];
-    mesh.traverse((child) => {
-      if (child.isMesh) {
-        const geometry = child.geometry;
-        const positionAttribute = geometry.attributes.position;
-        
-        for (let i = 0; i < positionAttribute.count; i++) {
-          const vertex = new THREE.Vector3();
-          vertex.fromBufferAttribute(positionAttribute, i);
-          vertex.applyMatrix4(child.matrixWorld);
-          vertices.push(vertex);
-        }
+// ─────────────────────────────────────────────
+//  ROTATION TABLE
+// ─────────────────────────────────────────────
+const ROTATION_MAP = {
+  'Y|+Z': [0, 0, 0],
+  'Y|-Z': [0, Math.PI, 0],
+  'Y|+X': [0, -Math.PI / 2, 0],
+  'Y|-X': [0,  Math.PI / 2, 0],
+  'Z|+X': [-Math.PI / 2, -Math.PI / 2, 0],
+  'Z|-X': [-Math.PI / 2,  Math.PI / 2, 0],
+  'Z|+Y': [-Math.PI / 2,  Math.PI, 0],
+  'Z|-Y': [-Math.PI / 2, 0, 0],
+  'X|+Z': [0, 0,  Math.PI / 2],
+  'X|-Z': [0, 0, -Math.PI / 2],
+};
+
+// ─────────────────────────────────────────────
+//  CONSOLE OVERRIDE SYSTEM
+//
+//  Open browser console and type any of these:
+//
+//    window.__garmentDebug.setFront('Y|+X')   ← try +X front
+//    window.__garmentDebug.setFront('Y|-X')   ← try -X front
+//    window.__garmentDebug.setFront('Y|-Z')   ← try -Z front
+//    window.__garmentDebug.setFront('Y|+Z')   ← back to default
+//
+//  Then hard refresh (Ctrl+Shift+R) after each one.
+//  When the garment looks correct:
+//
+//    window.__garmentDebug.confirm()   ← prints exactly what to paste into registry
+//    window.__garmentDebug.reset()     ← clears override
+//    window.__garmentDebug.help()      ← shows this guide
+// ─────────────────────────────────────────────
+if (typeof window !== 'undefined') {
+  window.__garmentDebug = {
+    _override: null,
+
+    setFront(rotKey) {
+      if (!ROTATION_MAP[rotKey]) {
+        console.error(`❌ Invalid key "${rotKey}". Valid options:`, Object.keys(ROTATION_MAP).join(', '));
+        return;
       }
-    });
-    
-    if (vertices.length === 0) {
-      console.warn('   No vertices found, defaulting front to Z');
-      return 'Z';
-    }
-    
-    // Count vertices in positive/negative directions for each axis
-    const counts = {
-      'X+': vertices.filter(v => v.x > 0).length,
-      'X-': vertices.filter(v => v.x < 0).length,
-      'Y+': vertices.filter(v => v.y > 0).length,
-      'Y-': vertices.filter(v => v.y < 0).length,
-      'Z+': vertices.filter(v => v.z > 0).length,
-      'Z-': vertices.filter(v => v.z < 0).length,
-    };
-    
-    console.log('   Vertex distribution:', counts);
-    
-    // Front is usually the side with MORE vertices (more detail/buttons/etc)
-    // Exclude the up axis from consideration
-    const validDirections = Object.keys(counts).filter(dir => !dir.startsWith(upAxis));
-    const frontDirection = validDirections.reduce((a, b) => counts[a] > counts[b] ? a : b);
-    
-    const frontAxis = frontDirection[0];  // 'X', 'Y', or 'Z'
-    const frontSign = frontDirection[1];  // '+' or '-'
-    
-    console.log('   Detected FRONT axis:', frontAxis + frontSign);
-    return frontAxis + frontSign;
-  }
-  
-  /**
-   * Standardize mesh to canonical orientation
-   * Returns transform to apply
-   */
-  standardize(mesh) {
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('🔧 BROWSER-BASED STANDARDIZATION');
-    
-    const analysis = this.analyzeMesh(mesh);
-    
-    if (!analysis.needsStandardization) {
-      console.log('✓ Mesh already standardized');
+      this._override = rotKey;
+      console.log(`✅ Override set to "${rotKey}"`);
+      console.log(`   Rotation: [${ROTATION_MAP[rotKey].map(r => (r * 180 / Math.PI).toFixed(0) + '°').join(', ')}]`);
+      console.log('   👉 Hard refresh (Ctrl+Shift+R) to see the change.');
+    },
+
+    confirm() {
+      if (!this._override) {
+        console.warn('No override active. Call setFront() first.');
+        return;
+      }
+      const [up, front] = this._override.split('|');
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      return {
-        position: new THREE.Vector3(0, 0, 0),
-        rotation: new THREE.Euler(0, 0, 0),
-        scale: 1.0
-      };
+      console.log('✅ CONFIRMED ORIENTATION:', this._override);
+      console.log('   Paste this into ASSET_ORIENTATIONS in meshStandardizer.js:');
+      console.log(`   template: { up: '${up}', front: '${front}' },`);
+      console.log(`   unknown:  { up: '${up}', front: '${front}' },`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    },
+
+    reset() {
+      this._override = null;
+      console.log('🔄 Override cleared. Hard refresh to revert.');
+    },
+
+    help() {
+      console.log(`
+🎯 GARMENT ORIENTATION DEBUG TOOLS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Step 1 — Try each orientation, hard refresh after each:
+  window.__garmentDebug.setFront('Y|+X')
+  window.__garmentDebug.setFront('Y|-X')
+  window.__garmentDebug.setFront('Y|-Z')
+  window.__garmentDebug.setFront('Y|+Z')   ← default
+
+Step 2 — When it looks right:
+  window.__garmentDebug.confirm()           ← prints registry fix
+
+Step 3 — Paste the output into ASSET_ORIENTATIONS in meshStandardizer.js
+  window.__garmentDebug.reset()             ← clean up
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      `);
+    },
+  };
+
+  console.log('🎯 Garment debug ready. Type window.__garmentDebug.help() to start.');
+}
+
+// ─────────────────────────────────────────────
+//  HELPERS
+// ─────────────────────────────────────────────
+function bakeTransform(object) {
+  object.updateMatrixWorld(true);
+  object.traverse((child) => {
+    if (child.isMesh && child.geometry) {
+      child.geometry = child.geometry.clone();
+      child.geometry.applyMatrix4(child.matrixWorld);
+      child.position.set(0, 0, 0);
+      child.quaternion.identity();
+      child.scale.set(1, 1, 1);
+      child.updateMatrixWorld(true);
     }
-    
-    // Calculate rotation needed
-    const rotation = this.calculateRotation(analysis.upAxis, analysis.frontAxis);
-    
-    // Calculate scale (normalize to height = 1.0)
-    const scale = this.calculateScale(analysis.size, analysis.upAxis, rotation);
-    
-    // Position at origin
-    const position = new THREE.Vector3(0, 0, 0);
-    
+  });
+  object.position.set(0, 0, 0);
+  object.quaternion.identity();
+  object.scale.set(1, 1, 1);
+  object.updateMatrixWorld(true);
+}
+
+function getBBox(object) {
+  object.updateMatrixWorld(true);
+  const bbox   = new THREE.Box3().setFromObject(object);
+  const size   = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  bbox.getSize(size);
+  bbox.getCenter(center);
+  return { bbox, size, center };
+}
+
+// ─────────────────────────────────────────────
+//  MAIN CLASS
+// ─────────────────────────────────────────────
+class MeshStandardizer {
+
+  applyStandardization(mesh, source = 'unknown') {
+    // Console override takes priority over registry
+    const overrideKey = typeof window !== 'undefined'
+      ? window.__garmentDebug?._override
+      : null;
+
+    const orientation = ASSET_ORIENTATIONS[source] ?? ASSET_ORIENTATIONS.unknown;
+    const rotKey      = overrideKey ?? `${orientation.up}|${orientation.front}`;
+    const eulerAngles = ROTATION_MAP[rotKey] ?? [0, 0, 0];
+
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('✅ STANDARDIZATION TRANSFORM:');
-    console.log('   Position:', position.toArray());
-    console.log('   Rotation:', rotation.toArray().map(n => (n * 180 / Math.PI).toFixed(1) + '°'));
-    console.log('   Scale:', scale.toFixed(3));
-    console.log('   Result: Origin (0,0,0), Front +Z, Up +Y');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    
-    return { position, rotation, scale };
-  }
-  
-  /**
-   * Calculate rotation to align axes
-   */
-  calculateRotation(upAxis, frontAxis) {
-    const rotation = new THREE.Euler(0, 0, 0, 'XYZ');
-    
-    // Step 1: Rotate so upAxis → Y
-    if (upAxis === 'X') {
-      rotation.z = Math.PI / 2;  // Rotate 90° around Z
-    } else if (upAxis === 'Z') {
-      rotation.x = -Math.PI / 2;  // Rotate -90° around X
-    }
-    // If upAxis === 'Y', no rotation needed
-    
-    // Step 2: Rotate so frontAxis → Z
-    // This depends on current orientation after step 1
-    const frontAxisLetter = frontAxis[0];
-    const frontSign = frontAxis[1];
-    
-    if (frontAxisLetter === 'X') {
-      if (frontSign === '+') {
-        rotation.y = -Math.PI / 2;  // +X → +Z requires -90° around Y
-      } else {
-        rotation.y = Math.PI / 2;   // -X → +Z requires +90° around Y
-      }
-    } else if (frontAxisLetter === 'Z') {
-      if (frontSign === '-') {
-        rotation.y = Math.PI;  // -Z → +Z requires 180° around Y
-      }
-      // If +Z, already correct
-    } else if (frontAxisLetter === 'Y') {
-      // Front is Y axis (unusual, but handle it)
-      rotation.x = Math.PI / 2;
-    }
-    
-    console.log('   Rotation calculation:');
-    console.log('     Up:', upAxis, '→ Y');
-    console.log('     Front:', frontAxis, '→ +Z');
-    
-    return rotation;
-  }
-  
-  /**
-   * Calculate scale to normalize height
-   */
-  calculateScale(size, upAxis, rotation) {
-    // After rotation, height will be in Y axis
-    // Target height = 1.0
-    
-    let currentHeight;
-    if (upAxis === 'Y') {
-      currentHeight = size.y;
-    } else if (upAxis === 'X') {
-      currentHeight = size.x;
+    console.log(`🔧 STANDARDIZING  source="${source}"`);
+    if (overrideKey) {
+      console.log(`   ⚠️  CONSOLE OVERRIDE ACTIVE: "${overrideKey}"`);
     } else {
-      currentHeight = size.z;
+      console.log(`   Registry: up=${orientation.up}, front=${orientation.front}`);
     }
-    
-    const scale = 1.0 / currentHeight;
-    console.log('   Scale calculation:');
-    console.log('     Current height:', currentHeight.toFixed(3));
-    console.log('     Target height: 1.0');
-    console.log('     Scale factor:', scale.toFixed(3));
-    
-    return scale;
-  }
-  
-  /**
-   * Apply standardization transform to a mesh
-   * Modifies the mesh in place
-   */
-  applyStandardization(mesh) {
-    const transform = this.standardize(mesh);
-    
-    // Center the mesh at origin first
-    const bbox = new THREE.Box3().setFromObject(mesh);
-    const center = new THREE.Vector3();
-    bbox.getCenter(center);
-    
-    mesh.position.sub(center);
-    
-    // Apply rotation
-    mesh.rotation.copy(transform.rotation);
-    
-    // Apply scale
-    mesh.scale.set(transform.scale, transform.scale, transform.scale);
-    
-    // Update matrices
-    mesh.updateMatrix();
+    console.log(`   Rotation: [${eulerAngles.map(r => (r * 180 / Math.PI).toFixed(0) + '°').join(', ')}]`);
+
+    // Step 1: reset any loader transform
+    mesh.position.set(0, 0, 0);
+    mesh.quaternion.identity();
+    mesh.scale.set(1, 1, 1);
     mesh.updateMatrixWorld(true);
-    
-    console.log('✅ Standardization applied to mesh');
-    
+
+    // Step 2: apply corrective rotation
+    mesh.setRotationFromEuler(new THREE.Euler(...eulerAngles, 'XYZ'));
+    mesh.updateMatrixWorld(true);
+
+    // Step 3: bake rotation into geometry so all subsequent measurements are correct
+    bakeTransform(mesh);
+
+    // Step 4: center at origin
+    const { size, center } = getBBox(mesh);
+    mesh.position.sub(center);
+    mesh.updateMatrixWorld(true);
+
+    // Step 5: normalize height (Y) to 1.0
+    const height = size.y > 0.001 ? size.y : Math.max(size.x, size.z);
+    mesh.scale.setScalar(1.0 / height);
+    mesh.updateMatrixWorld(true);
+
+    const after = getBBox(mesh);
+    console.log(`   After — size: [${after.size.toArray().map(n => n.toFixed(3)).join(', ')}]`);
+    console.log(`           center: [${after.center.toArray().map(n => n.toFixed(3)).join(', ')}]`);
+    console.log('✅ Standardization complete');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
     return mesh;
+  }
+
+  registerOrientation(source, up, front) {
+    ASSET_ORIENTATIONS[source] = { up, front };
+    console.log(`📝 Registered: "${source}" → up=${up}, front=${front}`);
   }
 }
 
