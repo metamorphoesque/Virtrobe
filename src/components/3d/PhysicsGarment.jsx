@@ -1,57 +1,22 @@
 // src/components/3d/PhysicsGarment.jsx
 // ============================================
-// GARMENT LOADER — Anchor-point positioning
-// Position is computed from the mannequin bounding box
-// directly, NOT from bodyTargets (avoids per-frame recompute).
+// GARMENT LOADER — 1:1 Life-Size Alignment
+// Assumes the GLB is already exported at the correct
+// real-world scale and relative position to fit the body.
+// NO scale math, NO centering math. 
+// Just matches the mannequin world transform.
 // ============================================
 
-import React, { useRef, useMemo, useEffect, useState, Suspense } from 'react';
+import React, { useRef, useMemo, Suspense } from 'react';
 import { useLoader, useFrame } from '@react-three/fiber';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import * as THREE from 'three';
-import { addFrontMarker, tagFrontDirection } from '../../utils/frontFaceMarker';
 
-// ─────────────────────────────────────────────
-//  THE ONE KNOB TO TURN — same as old GarmentLoader3D
-// ─────────────────────────────────────────────
+// If Blender exported with a 90-degree offset, keep this. 
+// If garments load sideways, change to 0.
 const GARMENT_Y_CORRECTION = -Math.PI / 2;
 
-// ── Garment height as a fraction of mannequin bounding-box height ──
-const HEIGHT_RATIOS = {
-    shirt: 0.40,
-    jacket: 0.45,
-    dress: 0.72,
-    pants: 0.52,
-    shorts: 0.28,
-    skirt: 0.35,
-};
-
-// ── Where the TOP EDGE of the garment should sit ──
-// Fraction of mannequin height measured from the BOTTOM.
-// e.g. 0.80 = 80% from the bottom = shoulder line
-const TOP_ANCHORS = {
-    shirt: 0.80,   // shoulders
-    jacket: 0.80,
-    dress: 0.80,
-    pants: 0.55,   // waist
-    shorts: 0.55,
-    skirt: 0.55,
-};
-
-function getMannequinWorldQuaternion(ref) {
-    if (!ref?.current) return null;
-    ref.current.updateMatrixWorld(true);
-    const q = new THREE.Quaternion();
-    ref.current.getWorldQuaternion(q);
-    return q;
-}
-
-// ─────────────────────────────────────────────
-//  TOP-LEVEL WRAPPER
-// ─────────────────────────────────────────────
-const PhysicsGarment = ({ garmentData, measurements, mannequinRef }) => {
-    const [mannequinData, setMannequinData] = useState(null);
-
+const PhysicsGarment = ({ garmentData, mannequinRef }) => {
     const modelUrl = garmentData?.modelUrl;
     if (!modelUrl) return null;
 
@@ -59,67 +24,10 @@ const PhysicsGarment = ({ garmentData, measurements, mannequinRef }) => {
         ? modelUrl
         : `http://localhost:5000${modelUrl}`;
 
-    // Stable key for mannequin bounds — only recompute when values change
-    const measKey = `${measurements.gender}_${measurements.height_cm}_${measurements.weight_kg}_${measurements.bust_cm}_${measurements.waist_cm}_${measurements.hips_cm}_${measurements.shoulder_width_cm}`;
-
-    useEffect(() => {
-        if (!mannequinRef?.current) return;
-        const mannequin = mannequinRef.current;
-        mannequin.updateMatrixWorld(true);
-        const box = new THREE.Box3().setFromObject(mannequin);
-        const size = new THREE.Vector3();
-        const center = new THREE.Vector3();
-        box.getSize(size);
-        box.getCenter(center);
-
-        setMannequinData(prev => {
-            if (prev &&
-                Math.abs(prev.size.y - size.y) < 0.001 &&
-                Math.abs(prev.center.y - center.y) < 0.001) {
-                return prev;
-            }
-            const bottomY = center.y - size.y * 0.5;
-            console.log('📐 Mannequin bounds:',
-                'size:', size.toArray().map(v => v.toFixed(3)),
-                'center:', center.toArray().map(v => v.toFixed(3)),
-                'bottomY:', bottomY.toFixed(3),
-                'topY:', (center.y + size.y * 0.5).toFixed(3));
-            return { size, center, bottomY };
-        });
-    }, [mannequinRef, measKey]);
-
-    // ── Compute garment transform from anchor points ──
-    // NO bodyTargets — purely from mannequin bounding box
-    const garmentTransform = useMemo(() => {
-        if (!mannequinData) return null;
-        const { size, center, bottomY } = mannequinData;
-        const garmentType = garmentData.type || 'shirt';
-
-        const heightRatio = HEIGHT_RATIOS[garmentType] ?? 0.40;
-        const topAnchor = TOP_ANCHORS[garmentType] ?? 0.80;
-        const targetHeight = size.y * heightRatio;
-
-        // Top edge of garment at the anchor point
-        const garmentTopY = bottomY + size.y * topAnchor;
-        // Center the garment below its top edge
-        const garmentCenterY = garmentTopY - targetHeight / 2;
-
-        const position = new THREE.Vector3(center.x, garmentCenterY, center.z);
-
-        console.log(`📍 ${garmentType}: topAnchorY=${garmentTopY.toFixed(3)}, centerY=${garmentCenterY.toFixed(3)}, targetH=${targetHeight.toFixed(3)}`);
-
-        return {
-            targetHeight,
-            position,
-            mannequinQuat: getMannequinWorldQuaternion(mannequinRef),
-        };
-    }, [mannequinData, garmentData.type, mannequinRef]);
-
     return (
         <Suspense fallback={<LoadingIndicator />}>
             <GarmentMesh
                 modelUrl={fullModelUrl}
-                transform={garmentTransform}
                 garmentData={garmentData}
                 mannequinRef={mannequinRef}
             />
@@ -127,89 +35,57 @@ const PhysicsGarment = ({ garmentData, measurements, mannequinRef }) => {
     );
 };
 
-// ─────────────────────────────────────────────
-//  INNER MESH
-// ─────────────────────────────────────────────
-const GarmentMesh = ({ modelUrl, transform, garmentData, mannequinRef }) => {
+const GarmentMesh = ({ modelUrl, garmentData, mannequinRef }) => {
     const meshRef = useRef();
     const gltf = useLoader(GLTFLoader, modelUrl);
 
-    // Raw diagnostic — once per model load
-    useEffect(() => {
-        const raw = gltf.scene;
-        raw.updateMatrixWorld(true);
-        const bbox = new THREE.Box3().setFromObject(raw);
-        const size = new THREE.Vector3();
-        bbox.getSize(size);
-        console.log('🔍 RAW GLB:', `X=${size.x.toFixed(3)} Y=${size.y.toFixed(3)} Z=${size.z.toFixed(3)}`);
-    }, [gltf]);
-
-    // Build positioned garment mesh — same proven logic as GarmentLoader3D
     const garmentMesh = useMemo(() => {
         const mesh = gltf.scene.clone(true);
-        if (!transform) return mesh;
 
-        // 1. Reset
+        // Reset any baked-in transforms from the loader
         mesh.position.set(0, 0, 0);
         mesh.quaternion.identity();
         mesh.scale.set(1, 1, 1);
-        mesh.updateMatrixWorld(true);
 
-        // 2. Measure raw size
-        const bbox = new THREE.Box3().setFromObject(mesh);
-        const size = new THREE.Vector3();
-        const center = new THREE.Vector3();
-        bbox.getSize(size);
-        bbox.getCenter(center);
-        const garmentHeight = Math.max(size.x, size.y, size.z);
-        const scale = transform.targetHeight / garmentHeight;
-
-        // 3. Center at origin
-        mesh.position.sub(center);
-
-        // 4. Apply mannequin quaternion + Y correction
-        if (transform.mannequinQuat) {
-            mesh.setRotationFromQuaternion(transform.mannequinQuat);
-            const correction = new THREE.Quaternion().setFromAxisAngle(
-                new THREE.Vector3(0, 1, 0),
-                GARMENT_Y_CORRECTION,
-            );
-            mesh.quaternion.multiply(correction);
-        }
-
-        // 5. Scale
-        mesh.scale.setScalar(scale);
-
-        // 6. Position
-        mesh.position.copy(transform.position);
-
-        // 7. Shadows
+        // Enable shadows
         mesh.traverse(child => {
-            if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; }
+            if (child.isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+            }
         });
 
-        // 8. Debug markers
-        tagFrontDirection(mesh, '+Z');
-        addFrontMarker(mesh, '+Z', 0.3, 0xff0000);
-        mesh.updateMatrixWorld(true);
-
-        console.log('📦', garmentData.name,
-            '| scale:', scale.toFixed(3),
-            '| pos:', transform.position.toArray().map(n => n.toFixed(3)));
+        console.log(`📦 Loaded ${garmentData.name} at 1:1 scale.`);
         return mesh;
-    }, [gltf, transform, garmentData.name]);
+    }, [gltf, garmentData.name]);
 
-    // Re-sync rotation every frame
+    // Lock to mannequin world position and rotation every frame
     useFrame(() => {
         if (!meshRef.current || !mannequinRef?.current) return;
-        const q = new THREE.Quaternion();
-        mannequinRef.current.getWorldQuaternion(q);
-        const correction = new THREE.Quaternion().setFromAxisAngle(
-            new THREE.Vector3(0, 1, 0),
-            GARMENT_Y_CORRECTION,
-        );
-        q.multiply(correction);
-        meshRef.current.setRotationFromQuaternion(q);
+
+        // 1. Get mannequin world position
+        const mannequinPos = new THREE.Vector3();
+        mannequinRef.current.getWorldPosition(mannequinPos);
+
+        // 2. Get mannequin world rotation
+        const mannequinQuat = new THREE.Quaternion();
+        mannequinRef.current.getWorldQuaternion(mannequinQuat);
+
+        // 3. Apply Y-correction for Blender exports
+        if (GARMENT_Y_CORRECTION !== 0) {
+            const correction = new THREE.Quaternion().setFromAxisAngle(
+                new THREE.Vector3(0, 1, 0),
+                GARMENT_Y_CORRECTION
+            );
+            mannequinQuat.multiply(correction);
+        }
+
+        // 4. Force garment to match exactly
+        meshRef.current.position.copy(mannequinPos);
+        meshRef.current.quaternion.copy(mannequinQuat);
+
+        // Ensure scale is exactly 1
+        meshRef.current.scale.set(1, 1, 1);
     });
 
     return <primitive ref={meshRef} object={garmentMesh} />;
