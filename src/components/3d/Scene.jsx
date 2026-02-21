@@ -6,7 +6,8 @@ import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { Environment, ContactShadows, Grid, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import MorphableMannequin from './MorphableMannequin';
-import GarmentLoader3D from './GarmentLoader3D';
+import PhysicsGarment from './PhysicsGarment';
+import MannequinLandmarks from './MannequinLandmarks';
 
 const DisplayStand = ({ position = [0, 0, 0], scale = 1 }) => {
   const { scene } = useGLTF('/models/DisplayStand.glb');
@@ -72,13 +73,17 @@ const BodyDebugBounds = ({ mannequinRef, onTargetsChange }) => {
     box.getSize(size);
     box.getCenter(center);
 
+    // Split ~55% from bottom (waist line). Upper body = top 45%,
+    // Lower body = bottom 55% — gives pants/skirts more room.
+    const splitY = box.min.y + size.y * 0.55;
+
     const upperBox = new THREE.Box3(
-      new THREE.Vector3(box.min.x, center.y, box.min.z),
+      new THREE.Vector3(box.min.x, splitY, box.min.z),
       new THREE.Vector3(box.max.x, box.max.y, box.max.z)
     );
     const lowerBox = new THREE.Box3(
       new THREE.Vector3(box.min.x, box.min.y, box.min.z),
-      new THREE.Vector3(box.max.x, center.y, box.max.z)
+      new THREE.Vector3(box.max.x, splitY, box.max.z)
     );
 
     const applyBoxToMesh = (b, mesh) => {
@@ -215,15 +220,24 @@ const SceneContent = ({
         />
 
         {showGarment && garmentData && (
-          <GarmentLoader3D
+          <PhysicsGarment
             garmentData={garmentData}
             measurements={measurements}
             mannequinRef={internalRef}
-            bodyTargets={bodyTargets}
           />
         )}
 
         <BodyDebugBounds mannequinRef={internalRef} onTargetsChange={setBodyTargets} />
+
+        {/* DEV: Body landmark markers — set enabled={false} to hide */}
+        <MannequinLandmarks
+          mannequinRef={internalRef}
+          measurements={measurements}
+          enabled={true}
+          showRings={true}
+          showDiscs={true}
+          showSpheres={true}
+        />
       </group>
     </>
   );
