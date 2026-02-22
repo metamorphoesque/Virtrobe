@@ -78,8 +78,8 @@ const MannequinLandmarks = ({
         if (positions.shoulder_left) positions.shoulder_left.x = center.x - shoulderHW;
         if (positions.shoulder_right) positions.shoulder_right.x = center.x + shoulderHW;
 
-        console.log('📍 Landmarks (runs once per measKey):',
-            Object.entries(positions).map(([k, v]) => `${k}:${v.y.toFixed(3)}`).join(' | '));
+        // console.log('📍 Landmarks (runs once per measKey):',
+        //    Object.entries(positions).map(([k, v]) => `${k}:${v.y.toFixed(3)}`).join(' | '));
         return positions;
     }, [mannequinRef, measKey, landmarks]); // measKey prevents per-frame spam
 

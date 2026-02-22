@@ -3,7 +3,7 @@
 
 import React, { useRef, useEffect } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
-import { Environment, ContactShadows, Grid, useGLTF } from '@react-three/drei';
+import { Environment, ContactShadows, Grid, useGLTF, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import MorphableMannequin from './MorphableMannequin';
 import PhysicsGarment from './PhysicsGarment';
@@ -23,9 +23,10 @@ const CameraController = () => {
     camera.position.set(0, 1.2, 4);
     camera.lookAt(0, 1, 0);
     camera.updateProjectionMatrix();
-    console.log('📷 Camera fixed (no user control)');
+    console.log('📷 Camera dev controls enabled - you can now fly around');
   }, [camera]);
-  return null;
+  // OrbitControls is ideal for dev-sake free camera inspection
+  return <OrbitControls makeDefault target={[0, 1, 0]} />;
 };
 
 const MannequinRotationController = ({ groupRef, shouldFaceFront }) => {
@@ -102,8 +103,6 @@ const BodyDebugBounds = ({ mannequinRef, onTargetsChange }) => {
     const lowerCenter = new THREE.Vector3();
     upperBox.getCenter(upperCenter);
     lowerBox.getCenter(lowerCenter);
-
-    if (onTargetsChange) onTargetsChange({ upperCenter, lowerCenter });
   });
 
   return (
@@ -136,7 +135,6 @@ const SceneContent = ({
 }) => {
   const internalRef = useRef();
   const groupRef = useRef();
-  const [bodyTargets, setBodyTargets] = React.useState(null);
 
   // ── ROTATION SNAP ──────────────────────────────────────────────────────────
   // When a garment is selected, snap the group to FRONT_ROTATION_Y BEFORE
@@ -227,7 +225,7 @@ const SceneContent = ({
           />
         )}
 
-        <BodyDebugBounds mannequinRef={internalRef} onTargetsChange={setBodyTargets} />
+        <BodyDebugBounds mannequinRef={internalRef} />
 
         {/* DEV: Body landmark markers — set enabled={false} to hide */}
         <MannequinLandmarks
