@@ -1,6 +1,4 @@
-// src/components/3d/Scene.jsx - FIXED VIEW VERSION
-// Camera is COMPLETELY STATIC - no user control at all
-
+// src/components/3d/Scene.jsx
 import React, { useRef, useEffect } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { Environment, ContactShadows, Grid, useGLTF, OrbitControls } from '@react-three/drei';
@@ -23,9 +21,7 @@ const CameraController = () => {
     camera.position.set(0, 1.2, 4);
     camera.lookAt(0, 1, 0);
     camera.updateProjectionMatrix();
-    console.log('📷 Camera dev controls enabled - you can now fly around');
   }, [camera]);
-  // OrbitControls is ideal for dev-sake free camera inspection
   return <OrbitControls makeDefault target={[0, 1, 0]} />;
 };
 
@@ -58,24 +54,19 @@ const AxisGizmo = () => {
   );
 };
 
-const BodyDebugBounds = ({ mannequinRef, onTargetsChange }) => {
+const BodyDebugBounds = ({ mannequinRef }) => {
   const upperRef = useRef();
   const lowerRef = useRef();
 
   useFrame(() => {
     if (!mannequinRef?.current || !upperRef.current || !lowerRef.current) return;
-
     const mannequin = mannequinRef.current;
     mannequin.updateMatrixWorld(true);
 
     const box = new THREE.Box3().setFromObject(mannequin);
     const size = new THREE.Vector3();
-    const center = new THREE.Vector3();
     box.getSize(size);
-    box.getCenter(center);
 
-    // Split ~55% from bottom (waist line). Upper body = top 45%,
-    // Lower body = bottom 55% — gives pants/skirts more room.
     const splitY = box.min.y + size.y * 0.55;
 
     const upperBox = new THREE.Box3(
@@ -98,11 +89,6 @@ const BodyDebugBounds = ({ mannequinRef, onTargetsChange }) => {
 
     applyBoxToMesh(upperBox, upperRef.current);
     applyBoxToMesh(lowerBox, lowerRef.current);
-
-    const upperCenter = new THREE.Vector3();
-    const lowerCenter = new THREE.Vector3();
-    upperBox.getCenter(upperCenter);
-    lowerBox.getCenter(lowerCenter);
   });
 
   return (
@@ -119,41 +105,37 @@ const BodyDebugBounds = ({ mannequinRef, onTargetsChange }) => {
   );
 };
 
-// ─────────────────────────────────────────────
-//  CANONICAL FRONT ROTATION
-//  This is the Y rotation where the mannequin faces the camera.
-//  Garment quaternion is ALWAYS captured from this angle.
-// ─────────────────────────────────────────────
 const FRONT_ROTATION_Y = Math.PI / 2;
 
 const SceneContent = ({
   measurements,
+  // Layer 0 — free tier: one upper + one lower
+  upperGarmentData,
+  lowerGarmentData,
+  // Fallback: legacy single garmentData prop
+  garmentData,
   showGarment,
   autoRotate,
-  garmentData,
-  mannequinRef
+  mannequinRef,
 }) => {
   const internalRef = useRef();
   const groupRef = useRef();
 
-  // ── ROTATION SNAP ──────────────────────────────────────────────────────────
-  // When a garment is selected, snap the group to FRONT_ROTATION_Y BEFORE
-  // GarmentLoader3D mounts. This guarantees getMannequinWorldQuaternion()
-  // always captures the same known orientation, not a random mid-spin angle.
+  // Resolve which garments to actually render.
+  // If the caller uses the new upperGarmentData/lowerGarmentData props, use those.
+  // Otherwise fall back to the legacy single garmentData prop (treated as upper).
+  const resolvedUpper = upperGarmentData ?? (garmentData?.slot !== 'lower' ? garmentData : null);
+  const resolvedLower = lowerGarmentData ?? (garmentData?.slot === 'lower' ? garmentData : null);
+  const hasAnyGarment = !!(resolvedUpper || resolvedLower);
+
   useEffect(() => {
-    if (showGarment && garmentData && groupRef.current) {
-      console.log('📌 Garment selected — snapping mannequin to front rotation');
+    if (hasAnyGarment && groupRef.current) {
       groupRef.current.rotation.y = FRONT_ROTATION_Y;
       groupRef.current.updateMatrixWorld(true);
     }
-  }, [showGarment, garmentData]);
-  // ──────────────────────────────────────────────────────────────────────────
+  }, [hasAnyGarment]);
 
-  const calculateStandHeight = () => {
-    const { height_cm = 170 } = measurements;
-    return (height_cm / 100) * 0.45;
-  };
-  const standHeight = calculateStandHeight();
+  const standHeight = ((measurements?.height_cm ?? 170) / 100) * 0.45;
 
   return (
     <>
@@ -161,7 +143,7 @@ const SceneContent = ({
 
       <MannequinRotationController
         groupRef={groupRef}
-        shouldFaceFront={showGarment && garmentData}
+        shouldFaceFront={hasAnyGarment}
       />
 
       <ambientLight intensity={0.8} />
@@ -213,21 +195,36 @@ const SceneContent = ({
             }
           }}
           measurements={measurements}
-          autoRotate={autoRotate && !showGarment}
+          autoRotate={autoRotate && !hasAnyGarment}
           standHeight={standHeight - 0.2}
         />
 
-        {showGarment && garmentData && (
+        {/* Layer 0 upper garment */}
+        {resolvedUpper && (
           <PhysicsGarment
-            garmentData={garmentData}
+            key={`upper-0-${resolvedUpper.id ?? resolvedUpper.name}`}
+            garmentData={resolvedUpper}
             measurements={measurements}
             mannequinRef={internalRef}
+            slot="upper"
+            layer={0}
+          />
+        )}
+
+        {/* Layer 0 lower garment */}
+        {resolvedLower && (
+          <PhysicsGarment
+            key={`lower-0-${resolvedLower.id ?? resolvedLower.name}`}
+            garmentData={resolvedLower}
+            measurements={measurements}
+            mannequinRef={internalRef}
+            slot="lower"
+            layer={0}
           />
         )}
 
         <BodyDebugBounds mannequinRef={internalRef} />
 
-        {/* DEV: Body landmark markers — set enabled={false} to hide */}
         <MannequinLandmarks
           mannequinRef={internalRef}
           measurements={measurements}
@@ -243,24 +240,18 @@ const SceneContent = ({
 
 const Scene = (props) => {
   const { mannequinRef, ...sceneProps } = props;
-  const canvasRef = React.useRef(null);
 
   const handleContextLost = (event) => {
     event.preventDefault();
-    console.error('⚠️ WebGL context lost');
+    console.error('WebGL context lost');
   };
 
   const handleContextRestored = () => {
-    console.log('✅ WebGL context restored');
+    console.log('WebGL context restored');
   };
 
-  React.useEffect(() => {
-    console.log('🎬 Scene mounted');
-    return () => console.log('🧹 Scene unmounting');
-  }, []);
-
   return (
-    <div ref={canvasRef} className="w-full h-full">
+    <div className="w-full h-full">
       <Canvas
         camera={{ position: [0, 1.2, 4], fov: 50 }}
         shadows
@@ -269,7 +260,7 @@ const Scene = (props) => {
           antialias: true,
           alpha: false,
           preserveDrawingBuffer: true,
-          powerPreference: 'high-performance'
+          powerPreference: 'high-performance',
         }}
         onCreated={({ gl, scene }) => {
           gl.setClearColor(0xffffff, 1);

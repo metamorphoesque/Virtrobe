@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
+
 export const useMoodboard = () => {
   const [savedOutfits, setSavedOutfits] = useState([]);
 
@@ -8,7 +9,7 @@ export const useMoodboard = () => {
   useEffect(() => {
     const fetchOutfits = async () => {
       const { data, error } = await supabase
-        .from('user_outfits')
+        .from('outfits')
         .select('*')
         .order('created_at', { ascending: false });
 
