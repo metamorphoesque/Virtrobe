@@ -51,6 +51,13 @@ const TryOnPage = ({ onSave }) => {
   };
 
   const handleSaveToMoodboard = () => {
+    // Capture screenshot from the 3D canvas
+    const canvas = document.querySelector('canvas');
+    let screenshotDataUrl = garmentUpload.uploadedImage; // fallback
+    if (canvas) {
+      screenshotDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+    }
+
     if (onSave) {
       onSave({
         id: Date.now(),
@@ -59,14 +66,14 @@ const TryOnPage = ({ onSave }) => {
         measurements: bodyMeasurements.measurements,
         garmentType: selectedClothingType,
         color: garmentUpload.garmentData?.dominantColor || '#000000',
-        imageUrl: garmentUpload.uploadedImage
+        imageUrl: screenshotDataUrl
       });
     }
     saveNotification.show();
   };
 
   return (
-    <div className="w-full h-screen flex bg-white">
+    <div className="w-full h-[calc(100vh-12rem)] flex bg-white overflow-hidden">
       <SaveNotification isVisible={saveNotification.isVisible} />
 
       <div className="flex gap-4 flex-1">
