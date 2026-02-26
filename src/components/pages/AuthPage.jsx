@@ -1,16 +1,79 @@
 // src/components/pages/AuthPage.jsx
-// 60/40 split login & signup page — editorial minimalist, white + black.
-// Wire up authService.signIn / signUp / signInWithGoogle when ready.
-
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Eye, EyeOff, ArrowRight } from 'lucide-react';
 import authService from '../../services/authService';
 
 // ---------------------------------------------------------------------------
-// Google wordmark SVG (no external dependency)
+// Inject keyframe animations once
+// ---------------------------------------------------------------------------
+const STYLES = `
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&display=swap');
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(18px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes slideRight {
+    from { transform: scaleX(0); }
+    to   { transform: scaleX(1); }
+  }
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+  @keyframes cursorBlink {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0; }
+  }
+  @keyframes panelReveal {
+    from { clip-path: inset(0 100% 0 0); }
+    to   { clip-path: inset(0 0% 0 0); }
+  }
+
+  .anim-fade-up   { animation: fadeUp 0.7s cubic-bezier(0.22,1,0.36,1) both; }
+  .anim-fade-in   { animation: fadeIn 0.6s ease both; }
+  .anim-slide-r   { animation: slideRight 0.8s cubic-bezier(0.22,1,0.36,1) both; transform-origin: left; }
+  .anim-panel     { animation: panelReveal 1s cubic-bezier(0.22,1,0.36,1) both; }
+  .anim-marquee   { animation: marquee 18s linear infinite; }
+  .cursor-blink   { animation: cursorBlink 1.1s step-end infinite; }
+
+  .d-0  { animation-delay: 0ms; }
+  .d-1  { animation-delay: 80ms; }
+  .d-2  { animation-delay: 160ms; }
+  .d-3  { animation-delay: 240ms; }
+  .d-4  { animation-delay: 320ms; }
+  .d-5  { animation-delay: 400ms; }
+  .d-6  { animation-delay: 480ms; }
+  .d-7  { animation-delay: 560ms; }
+  .d-8  { animation-delay: 640ms; }
+
+  .field-line {
+    position: relative;
+  }
+  .field-line::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0;
+    width: 100%; height: 1px;
+    background: black;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.3s cubic-bezier(0.22,1,0.36,1);
+  }
+  .field-line:focus-within::after { transform: scaleX(1); }
+`;
+
+const serif = { fontFamily: "'Cormorant Garamond', Georgia, serif" };
+
+// ---------------------------------------------------------------------------
+// Google icon
 // ---------------------------------------------------------------------------
 const GoogleIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
     <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615Z" fill="#4285F4"/>
     <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18Z" fill="#34A853"/>
     <path d="M3.964 10.706A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.038l3.007-2.332Z" fill="#FBBC05"/>
@@ -19,104 +82,186 @@ const GoogleIcon = () => (
 );
 
 // ---------------------------------------------------------------------------
-// Animated editorial left panel — fashion editorial feel with typography
+// Parallax left panel
 // ---------------------------------------------------------------------------
 const LeftPanel = () => {
+  const panelRef = useRef(null);
+
+  // Layer refs for parallax
+  const layer1 = useRef(null); // slowest — background lines
+  const layer2 = useRef(null); // medium — year number
+  const layer3 = useRef(null); // fastest — headline text
+
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+
+    const onMove = (e) => {
+      const rect = panel.getBoundingClientRect();
+      // Normalise to -1 → +1 from panel centre
+      const nx = ((e.clientX - rect.left) / rect.width  - 0.5) * 2;
+      const ny = ((e.clientY - rect.top)  / rect.height - 0.5) * 2;
+
+      if (layer1.current) layer1.current.style.transform = `translate(${nx * 6}px, ${ny * 4}px)`;
+      if (layer2.current) layer2.current.style.transform = `translate(${nx * 14}px, ${ny * 8}px)`;
+      if (layer3.current) layer3.current.style.transform = `translate(${nx * 22}px, ${ny * 14}px)`;
+    };
+
+    const onLeave = () => {
+      [layer1, layer2, layer3].forEach((r) => {
+        if (r.current) r.current.style.transform = 'translate(0,0)';
+      });
+    };
+
+    panel.addEventListener('mousemove', onMove);
+    panel.addEventListener('mouseleave', onLeave);
+    return () => {
+      panel.removeEventListener('mousemove', onMove);
+      panel.removeEventListener('mouseleave', onLeave);
+    };
+  }, []);
+
+  // Rotating copy lines
+  const lines = [
+    { tag: 'Outfit check.',    sub: 'Show us what you\'re wearing.' },
+    { tag: 'Step out, virtually.', sub: 'Your wardrobe. Your rules.' },
+    { tag: 'Dress the future.', sub: 'Try it on before it arrives.' },
+  ];
+  const [lineIdx, setLineIdx] = useState(0);
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setVisible(false);
+      setTimeout(() => {
+        setLineIdx((i) => (i + 1) % lines.length);
+        setVisible(true);
+      }, 400);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
-    <div className="relative w-[60%] h-full bg-black overflow-hidden flex-shrink-0">
-      {/* Background texture — fine grain noise via SVG filter */}
-      <svg className="absolute inset-0 w-full h-full opacity-[0.04] pointer-events-none" xmlns="http://www.w3.org/2000/svg">
+    <div
+      ref={panelRef}
+      className="relative w-[60%] h-full bg-black overflow-hidden flex-shrink-0 select-none"
+      style={{ cursor: 'none' }}
+    >
+      {/* Noise texture */}
+      <svg className="absolute inset-0 w-full h-full opacity-[0.035] pointer-events-none" xmlns="http://www.w3.org/2000/svg">
         <filter id="noise">
-          <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/>
+          <feTurbulence type="fractalNoise" baseFrequency="0.68" numOctaves="4" stitchTiles="stitch"/>
           <feColorMatrix type="saturate" values="0"/>
         </filter>
         <rect width="100%" height="100%" filter="url(#noise)"/>
       </svg>
 
-      {/* Geometric accent lines */}
-      <div className="absolute inset-0 pointer-events-none">
-        {/* Thin horizontal rule — upper third */}
-        <div className="absolute top-[30%] left-12 right-12 h-px bg-white/8" />
-        {/* Thin vertical rule — right side */}
-        <div className="absolute top-12 bottom-12 right-[38%] w-px bg-white/5" />
-        {/* Large circle — partially visible */}
-        <div className="absolute -bottom-32 -left-32 w-96 h-96 rounded-full border border-white/5" />
-        <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full border border-white/5" />
+      {/* Layer 1 — geometric lines (slowest parallax) */}
+      <div
+        ref={layer1}
+        className="absolute inset-0 pointer-events-none"
+        style={{ transition: 'transform 0.8s cubic-bezier(0.22,1,0.36,1)' }}
+      >
+        <div className="absolute top-[28%] left-10 right-10 h-px bg-white/6 anim-slide-r d-0" />
+        <div className="absolute top-[29%] left-10 right-24 h-px bg-white/3 anim-slide-r d-1" />
+        <div className="absolute top-14 bottom-14 left-[35%] w-px bg-white/4 anim-fade-in d-2" />
+        <div className="absolute -bottom-40 -left-40 w-[500px] h-[500px] rounded-full border border-white/[0.04] anim-fade-in d-3" />
+        <div className="absolute -bottom-20 -left-20 w-[300px] h-[300px] rounded-full border border-white/[0.03] anim-fade-in d-4" />
+        <div className="absolute -top-24 -right-24 w-72 h-72 rounded-full border border-white/[0.04] anim-fade-in d-2" />
       </div>
 
-      {/* Logo top-left */}
-      <div className="absolute top-10 left-10 z-10">
-        <span
-          className="text-white text-sm font-light tracking-[0.3em] uppercase"
-          style={{ fontFamily: "'Cormorant Garamond', 'Georgia', serif" }}
-        >
+      {/* Logo */}
+      <div className="absolute top-9 left-9 z-10 anim-fade-up d-0">
+        <span className="text-white text-[11px] font-light tracking-[0.35em] uppercase" style={serif}>
           Virtrobe
         </span>
       </div>
 
-      {/* Central editorial text */}
-      <div className="absolute inset-0 flex flex-col justify-end p-10 pb-14 z-10">
-        <div className="mb-6">
-          <p className="text-white/30 text-[10px] tracking-[0.4em] uppercase mb-4">
+      {/* Layer 2 — year number (medium parallax) */}
+      <div
+        ref={layer2}
+        className="absolute top-8 right-9 z-10 flex flex-col items-end"
+        style={{ transition: 'transform 0.7s cubic-bezier(0.22,1,0.36,1)' }}
+      >
+        <span className="text-white/10 text-[9px] tracking-[0.3em] uppercase anim-fade-in d-1" style={serif}>Est.</span>
+        <span className="text-white/[0.08] font-light leading-none anim-fade-up d-2" style={{ ...serif, fontSize: '4.5rem' }}>
+          2025
+        </span>
+      </div>
+
+      {/* Layer 3 — headline (fastest parallax) */}
+      <div
+        ref={layer3}
+        className="absolute inset-0 flex flex-col justify-end p-10 pb-12 z-10"
+        style={{ transition: 'transform 0.5s cubic-bezier(0.22,1,0.36,1)' }}
+      >
+        {/* Rotating copy */}
+        <div
+          className="mb-6"
+          style={{
+            opacity: visible ? 1 : 0,
+            transform: visible ? 'translateY(0)' : 'translateY(10px)',
+            transition: 'opacity 0.4s ease, transform 0.4s cubic-bezier(0.22,1,0.36,1)',
+          }}
+        >
+          <p className="text-white/25 text-[9px] tracking-[0.45em] uppercase mb-5" style={serif}>
             Your digital wardrobe
           </p>
           <h1
-            className="text-white font-light leading-[1.05]"
-            style={{
-              fontFamily: "'Cormorant Garamond', 'Georgia', serif",
-              fontSize: 'clamp(2.4rem, 4.5vw, 4rem)',
-            }}
+            className="text-white font-light leading-[1.02]"
+            style={{ ...serif, fontSize: 'clamp(2.2rem, 3.8vw, 3.5rem)' }}
           >
-            Style is a form<br />
-            of <em>self-expression</em>.
+            {lines[lineIdx].tag}
           </h1>
+          <p
+            className="text-white/35 font-light mt-2"
+            style={{ ...serif, fontSize: 'clamp(1rem, 1.6vw, 1.3rem)' }}
+          >
+            <em>{lines[lineIdx].sub}</em>
+          </p>
         </div>
 
-        <div className="h-px w-12 bg-white/20 mb-5" />
+        {/* Animated rule */}
+        <div
+          className="h-px bg-white/15 mb-5 anim-slide-r d-5"
+          style={{ width: '3rem', transformOrigin: 'left' }}
+        />
 
-        <p
-          className="text-white/40 text-xs leading-relaxed max-w-xs"
-          style={{ fontFamily: "'Cormorant Garamond', 'Georgia', serif", fontSize: '0.85rem' }}
-        >
+        <p className="text-white/30 leading-relaxed max-w-[260px] anim-fade-up d-6" style={{ ...serif, fontSize: '0.82rem' }}>
           Try on any garment on your personalised 3D silhouette.
           Curate looks. Share with the world.
         </p>
       </div>
 
-      {/* Floating editorial number tag — top right of panel */}
-      <div className="absolute top-10 right-10 z-10 flex flex-col items-end gap-1">
-        <span className="text-white/15 text-[10px] tracking-widest uppercase">Est.</span>
-        <span
-          className="text-white/20 text-4xl font-light"
-          style={{ fontFamily: "'Cormorant Garamond', 'Georgia', serif" }}
-        >
-          2025
-        </span>
+      {/* Bottom marquee strip */}
+      <div className="absolute bottom-0 left-0 right-0 h-8 border-t border-white/[0.06] flex items-center overflow-hidden z-20">
+        <div className="anim-marquee flex gap-0 whitespace-nowrap">
+          {Array(6).fill('OUTFIT CHECK · VIRTUAL TRY-ON · VIRTROBE · SHOW US WHAT YOU\'RE WEARING · ').map((t, i) => (
+            <span key={i} className="text-white/15 text-[9px] tracking-[0.3em] uppercase px-6" style={serif}>{t}</span>
+          ))}
+        </div>
       </div>
     </div>
   );
 };
 
 // ---------------------------------------------------------------------------
-// Input field
+// Form field
 // ---------------------------------------------------------------------------
 const Field = ({ label, type = 'text', value, onChange, placeholder, autoComplete, children }) => (
-  <div className="flex flex-col gap-1.5">
-    <label
-      className="text-[10px] text-black/40 uppercase tracking-[0.15em]"
-      style={{ fontFamily: "'Cormorant Garamond', 'Georgia', serif" }}
-    >
+  <div className="flex flex-col gap-1">
+    <label className="text-[9px] text-black/35 uppercase tracking-[0.2em]" style={serif}>
       {label}
     </label>
-    <div className="relative">
+    <div className="relative field-line border-b border-black/12">
       <input
         type={type}
         value={value}
         onChange={onChange}
         placeholder={placeholder}
         autoComplete={autoComplete}
-        className="w-full border-b border-black/15 focus:border-black bg-transparent py-2.5 text-sm text-black placeholder:text-black/20 outline-none transition-colors duration-200"
-        style={{ fontFamily: "'Cormorant Garamond', 'Georgia', serif", fontSize: '1rem' }}
+        className="w-full bg-transparent py-2 text-black placeholder:text-black/18 outline-none"
+        style={{ ...serif, fontSize: '0.95rem' }}
       />
       {children}
     </div>
@@ -127,210 +272,219 @@ const Field = ({ label, type = 'text', value, onChange, placeholder, autoComplet
 // AuthPage
 // ---------------------------------------------------------------------------
 const AuthPage = ({ onAuthSuccess }) => {
-  const [mode, setMode] = React.useState('login'); // 'login' | 'signup'
-  const [email, setEmail] = React.useState('');
-  const [password, setPassword] = React.useState('');
-  const [username, setUsername] = React.useState('');
-  const [displayName, setDisplayName] = React.useState('');
-  const [showPassword, setShowPassword] = React.useState(false);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState('');
+  const [mode, setMode] = useState('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [formKey, setFormKey] = useState(0); // re-trigger animations on mode switch
 
   const isLogin = mode === 'login';
+
+  const switchMode = (m) => {
+    setMode(m);
+    setError('');
+    setFormKey((k) => k + 1);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      if (isLogin) {
-        const user = await authService.signIn({ email, password });
-        onAuthSuccess?.(user);
-      } else {
-        const user = await authService.signUp({ email, password, username, displayName });
-        onAuthSuccess?.(user);
-      }
+      const user = isLogin
+        ? await authService.signIn({ email, password })
+        : await authService.signUp({ email, password, username, displayName });
+      onAuthSuccess?.(user);
     } catch (err) {
-      setError(err.message ?? 'Something went wrong. Please try again.');
+      setError(err.message ?? 'Something went wrong.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleGoogle = async () => {
-    // OAuth wired to Supabase — enable Google provider in Supabase dashboard first
     try {
       await authService.signInWithGoogle?.();
-    } catch (err) {
+    } catch {
       setError('Google sign-in is not configured yet.');
     }
   };
 
   return (
-    <div className="w-full h-screen flex bg-white overflow-hidden">
+    <>
+      <style>{STYLES}</style>
 
-      {/* ── Left: editorial panel (60%) ── */}
-      <LeftPanel />
+      <div className="w-full h-screen flex bg-white overflow-hidden">
 
-      {/* ── Right: auth form (40%) ── */}
-      <div className="flex-1 flex flex-col justify-center px-12 lg:px-16 xl:px-20 overflow-y-auto">
+        {/* ── Left panel ── */}
+        <LeftPanel />
 
-        {/* Mode toggle tabs */}
-        <div className="flex gap-6 mb-12">
-          {['login', 'signup'].map((m) => (
-            <button
-              key={m}
-              onClick={() => { setMode(m); setError(''); }}
-              className={`text-sm pb-2 border-b-2 transition-all duration-200 capitalize tracking-wide ${
-                mode === m
-                  ? 'border-black text-black'
-                  : 'border-transparent text-black/25 hover:text-black/50'
-              }`}
-              style={{ fontFamily: "'Cormorant Garamond', 'Georgia', serif", fontSize: '1.1rem' }}
-            >
-              {m === 'login' ? 'Sign in' : 'Create account'}
-            </button>
-          ))}
-        </div>
+        {/* ── Right: form (40%) ── */}
+        <div className="flex-1 flex flex-col justify-center overflow-hidden">
+          {/* Inner scrollable — ensures nothing is cut off on small heights */}
+          <div className="overflow-y-auto h-full flex flex-col justify-center px-10 lg:px-14 py-8">
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+            {/* Mode tabs */}
+            <div className="flex gap-7 mb-8 anim-fade-up d-0">
+              {[['login', 'Sign in'], ['signup', 'Create account']].map(([m, label]) => (
+                <button
+                  key={m}
+                  onClick={() => switchMode(m)}
+                  className="pb-1.5 border-b-[1.5px] transition-all duration-300"
+                  style={{
+                    ...serif,
+                    fontSize: '1rem',
+                    borderColor: mode === m ? 'black' : 'transparent',
+                    color: mode === m ? 'black' : 'rgba(0,0,0,0.25)',
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
 
-          {/* Sign-up only fields */}
-          {!isLogin && (
-            <>
-              <Field
-                label="Display name"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="How you appear to others"
-                autoComplete="name"
-              />
-              <Field
-                label="Username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="your_handle"
-                autoComplete="username"
-              />
-            </>
-          )}
+            {/* Form — key resets animation on mode switch */}
+            <form key={formKey} onSubmit={handleSubmit} className="flex flex-col gap-4">
 
-          <Field
-            label="Email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            autoComplete="email"
-          />
+              {!isLogin && (
+                <>
+                  <div className="anim-fade-up d-0">
+                    <Field
+                      label="Display name"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      placeholder="How others see you"
+                      autoComplete="name"
+                    />
+                  </div>
+                  <div className="anim-fade-up d-1">
+                    <Field
+                      label="Username"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      placeholder="your_handle"
+                      autoComplete="username"
+                    />
+                  </div>
+                </>
+              )}
 
-          <Field
-            label="Password"
-            type={showPassword ? 'text' : 'password'}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            autoComplete={isLogin ? 'current-password' : 'new-password'}
-          >
-            <button
-              type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              className="absolute right-0 top-1/2 -translate-y-1/2 text-black/25 hover:text-black/60 transition-colors"
-              tabIndex={-1}
-            >
-              {showPassword
-                ? <EyeOff className="w-4 h-4" />
-                : <Eye className="w-4 h-4" />
-              }
-            </button>
-          </Field>
+              <div className={`anim-fade-up ${isLogin ? 'd-1' : 'd-2'}`}>
+                <Field
+                  label="Email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                />
+              </div>
 
-          {/* Forgot password */}
-          {isLogin && (
-            <div className="flex justify-end -mt-2">
+              <div className={`anim-fade-up ${isLogin ? 'd-2' : 'd-3'}`}>
+                <Field
+                  label="Password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  autoComplete={isLogin ? 'current-password' : 'new-password'}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute right-0 top-1/2 -translate-y-1/2 text-black/25 hover:text-black/60 transition-colors"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </Field>
+              </div>
+
+              {/* Forgot + error row */}
+              <div className={`flex items-center justify-between anim-fade-in ${isLogin ? 'd-3' : 'd-4'}`}>
+                {error
+                  ? <p className="text-[10px] text-red-400 leading-relaxed flex-1">{error}</p>
+                  : <span />
+                }
+                {isLogin && (
+                  <button
+                    type="button"
+                    className="text-[10px] text-black/25 hover:text-black transition-colors ml-auto"
+                    style={serif}
+                  >
+                    Forgot password?
+                  </button>
+                )}
+              </div>
+
+              {/* Submit */}
+              <div className={`anim-fade-up ${isLogin ? 'd-4' : 'd-5'}`}>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3 bg-black text-white flex items-center justify-center gap-2 transition-all duration-200 hover:bg-black/80 active:scale-[0.98] disabled:opacity-40"
+                  style={{ ...serif, fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase' }}
+                >
+                  {loading
+                    ? <div className="w-3.5 h-3.5 border-2 border-white/25 border-t-white rounded-full animate-spin" />
+                    : <>{isLogin ? 'Sign in' : 'Create account'}<ArrowRight className="w-3 h-3" /></>
+                  }
+                </button>
+              </div>
+            </form>
+
+            {/* Divider */}
+            <div className={`flex items-center gap-3 my-5 anim-fade-in ${isLogin ? 'd-5' : 'd-6'}`}>
+              <div className="flex-1 h-px bg-black/7" />
+              <span className="text-[9px] text-black/20 tracking-[0.2em] uppercase" style={serif}>or</span>
+              <div className="flex-1 h-px bg-black/7" />
+            </div>
+
+            {/* Google */}
+            <div className={`anim-fade-up ${isLogin ? 'd-6' : 'd-7'}`}>
               <button
+                onClick={handleGoogle}
                 type="button"
-                className="text-[11px] text-black/30 hover:text-black transition-colors tracking-wide"
-                style={{ fontFamily: "'Cormorant Garamond', 'Georgia', serif" }}
+                className="w-full py-2.5 border border-black/10 flex items-center justify-center gap-2.5 text-black/50 hover:border-black/25 hover:text-black transition-all duration-200 active:scale-[0.98]"
+                style={{ ...serif, fontSize: '0.85rem' }}
               >
-                Forgot password?
+                <GoogleIcon />
+                Continue with Google
               </button>
             </div>
-          )}
 
-          {/* Error */}
-          {error && (
-            <p className="text-red-500 text-[11px] leading-relaxed -mt-2">{error}</p>
-          )}
+            {/* Switch mode */}
+            <p
+              className={`mt-5 text-center text-[10px] text-black/25 anim-fade-in ${isLogin ? 'd-7' : 'd-8'}`}
+              style={serif}
+            >
+              {isLogin ? "Don't have an account? " : 'Already have an account? '}
+              <button
+                onClick={() => switchMode(isLogin ? 'signup' : 'login')}
+                className="text-black underline underline-offset-2 hover:text-black/60 transition-colors"
+              >
+                {isLogin ? 'Create one' : 'Sign in'}
+              </button>
+            </p>
 
-          {/* Submit */}
-          <button
-            type="submit"
-            disabled={loading}
-            className="mt-2 flex items-center justify-center gap-2 w-full py-3.5 bg-black text-white text-sm tracking-widest uppercase transition-all duration-200 hover:bg-black/80 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed rounded-none"
-            style={{ fontFamily: "'Cormorant Garamond', 'Georgia', serif", fontSize: '0.75rem', letterSpacing: '0.2em' }}
-          >
-            {loading ? (
-              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            ) : (
-              <>
-                {isLogin ? 'Sign in' : 'Create account'}
-                <ArrowRight className="w-3.5 h-3.5" />
-              </>
-            )}
-          </button>
-        </form>
-
-        {/* Divider */}
-        <div className="flex items-center gap-4 my-7">
-          <div className="flex-1 h-px bg-black/8" />
-          <span
-            className="text-[10px] text-black/25 tracking-[0.2em] uppercase"
-            style={{ fontFamily: "'Cormorant Garamond', 'Georgia', serif" }}
-          >
-            or
-          </span>
-          <div className="flex-1 h-px bg-black/8" />
+            {/* Legal */}
+            <p
+              className={`mt-3 text-center text-[9px] text-black/18 leading-relaxed anim-fade-in ${isLogin ? 'd-8' : 'd-8'}`}
+              style={serif}
+            >
+              By continuing you agree to our{' '}
+              <span className="underline underline-offset-2 cursor-pointer hover:text-black/35 transition-colors">Terms</span>
+              {' '}and{' '}
+              <span className="underline underline-offset-2 cursor-pointer hover:text-black/35 transition-colors">Privacy Policy</span>.
+            </p>
+          </div>
         </div>
-
-        {/* Google OAuth */}
-        <button
-          onClick={handleGoogle}
-          type="button"
-          className="flex items-center justify-center gap-3 w-full py-3 border border-black/12 text-black/60 text-sm hover:border-black/30 hover:text-black transition-all duration-200 active:scale-[0.98]"
-          style={{ fontFamily: "'Cormorant Garamond', 'Georgia', serif', fontSize: '0.95rem'" }}
-        >
-          <GoogleIcon />
-          Continue with Google
-        </button>
-
-        {/* Switch mode */}
-        <p
-          className="mt-8 text-center text-[11px] text-black/30"
-          style={{ fontFamily: "'Cormorant Garamond', 'Georgia', serif" }}
-        >
-          {isLogin ? "Don't have an account?" : 'Already have an account?'}{' '}
-          <button
-            onClick={() => { setMode(isLogin ? 'signup' : 'login'); setError(''); }}
-            className="text-black underline underline-offset-2 hover:text-black/70 transition-colors"
-          >
-            {isLogin ? 'Create one' : 'Sign in'}
-          </button>
-        </p>
-
-        {/* Legal */}
-        <p
-          className="mt-6 text-center text-[10px] text-black/20 leading-relaxed"
-          style={{ fontFamily: "'Cormorant Garamond', 'Georgia', serif" }}
-        >
-          By continuing you agree to our{' '}
-          <span className="underline underline-offset-2 cursor-pointer hover:text-black/40 transition-colors">Terms</span>
-          {' '}and{' '}
-          <span className="underline underline-offset-2 cursor-pointer hover:text-black/40 transition-colors">Privacy Policy</span>.
-        </p>
       </div>
-    </div>
+    </>
   );
 };
 

@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import MorphableMannequin from './MorphableMannequin';
 import PhysicsGarment from './PhysicsGarment';
 import MannequinLandmarks from './MannequinLandmarks';
+import LandmarkDebugger from './LandmarkDebugger';
 
 const DisplayStand = ({ position = [0, 0, 0], scale = 1 }) => {
   const { scene } = useGLTF('/models/DisplayStand.glb');
@@ -177,7 +178,8 @@ const SceneContent = ({
         far={2}
         color="#ffffff"
       />
-
+      <LandmarkDebugger mannequinRef={internalRef} />
+      
       <AxisGizmo />
 
       <group rotation={[0, Math.PI / 2, 0]}>
