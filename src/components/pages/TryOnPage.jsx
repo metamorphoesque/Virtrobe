@@ -1,5 +1,5 @@
 // src/components/pages/TryOnPage.jsx
-import React from 'react';
+import React, { useState } from 'react';
 import Scene from '../3d/Scene';
 import GenderSelector from '../TryOn/GenderSelector';
 import ClothingSidebar from '../TryOn/ClothingSidebar';
@@ -13,8 +13,8 @@ import { useGarmentUpload } from '../../hooks/useGarmentUpload';
 import { useUnitConversion } from '../../hooks/useUnitConversion';
 import { useNotification } from '../../hooks/useNotification';
 import garmentTemplateService from '../../services/garmentTemplateService';
-import { useSaveOutfit }    from '../../hooks/useSaveOutfit';
-import SaveOutfitDialog     from '../TryOn/SaveOutfitDialog';
+import { useSaveOutfit } from '../../hooks/useSaveOutfit';
+import SaveOutfitDialog from '../TryOn/SaveOutfitDialog';
 
 // ---------------------------------------------------------------------------
 // Slot routing
@@ -26,8 +26,6 @@ const LOWER_TYPES = new Set([
 ]);
 const slotForType = (type) =>
   LOWER_TYPES.has(type?.toLowerCase()) ? LOWER_SLOT : UPPER_SLOT;
-const [showSaveDialog, setShowSaveDialog] = useState(false);
-const { saveOutfit, saving, error: saveError } = useSaveOutfit(user);
 
 // ---------------------------------------------------------------------------
 // Auth modal — full-screen overlay on top of TryOnPage
@@ -60,6 +58,9 @@ const TryOnPage = ({ onSave, onSaveOutfit, onShare, user, onUserChange }) => {
   // Auth modal state
   const [showAuthModal, setShowAuthModal] = React.useState(false);
 
+  // Save outfit dialog state
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+
   // Garment slots
   const [selectedClothingType, setSelectedClothingType] = React.useState('shirt');
   const [upperGarment, setUpperGarment] = React.useState(null);
@@ -71,6 +72,7 @@ const TryOnPage = ({ onSave, onSaveOutfit, onShare, user, onUserChange }) => {
   const garmentUpload = useGarmentUpload(bodyMeasurements.measurements);
   const unitConversion = useUnitConversion();
   const saveNotification = useNotification(3000);
+  const { saveOutfit, saving, error: saveError } = useSaveOutfit(user);
 
   const hasAnyGarment = !!(upperGarment || lowerGarment);
   const mannequinSelected = !!bodyMeasurements.gender;
@@ -142,31 +144,28 @@ const TryOnPage = ({ onSave, onSaveOutfit, onShare, user, onUserChange }) => {
     return canvas ? canvas.toDataURL('image/jpeg', 0.9) : null;
   };
 
-  // 3. ADD this handler in TryOnPage (alongside handleGarmentSelect etc):
-const handleSaveOutfit = async ({ name, description, tags, isPublic }) => {
-  try {
-    // Grab the canvas element from the DOM
-    // Your Scene is rendered inside a div with className "w-full h-full"
-    const canvasEl = document.querySelector('canvas');
+  const handleSaveOutfit = async ({ name, description, tags, isPublic }) => {
+    try {
+      const canvasEl = document.querySelector('canvas');
 
-    await saveOutfit({
-      name,
-      description,
-      tags,
-      isPublic,
-      measurements,          // your existing measurements state
-      upperTemplateId: selectedUpperTemplateId ?? null,   // your upper garment state
-      lowerTemplateId: selectedLowerTemplateId ?? null,   // your lower garment state
-      canvasEl,
-    });
+      await saveOutfit({
+        name,
+        description,
+        tags,
+        isPublic,
+        measurements: bodyMeasurements.measurements,
+        upperTemplateId: upperTemplateId ?? null,
+        lowerTemplateId: lowerTemplateId ?? null,
+        canvasEl,
+      });
 
-    setShowSaveDialog(false);
-    // Optionally show a success notification here
-  } catch (err) {
-    // saveError state is set automatically by the hook
-    console.error('Save failed:', err);
-  }
-};
+      setShowSaveDialog(false);
+      saveNotification.show();
+    } catch (err) {
+      // saveError state is set automatically by the hook
+      console.error('Save failed:', err);
+    }
+  };
 
   const handlePost = () => {
     if (!isLoggedIn) { setShowAuthModal(true); return; }
@@ -251,6 +250,10 @@ const handleSaveOutfit = async ({ name, description, tags, isPublic }) => {
                 isLoggedIn={isLoggedIn}
                 mannequinSelected={mannequinSelected}
                 onOpenAuth={() => setShowAuthModal(true)}
+                onSave={() => {
+                  if (!isLoggedIn) { setShowAuthModal(true); return; }
+                  setShowSaveDialog(true);
+                }}
               />
             </div>
 
@@ -258,6 +261,16 @@ const handleSaveOutfit = async ({ name, description, tags, isPublic }) => {
             <SimilarLooksRow visible={mannequinSelected} />
           </div>
         </div>
+
+        {/* Save Outfit Dialog */}
+        {showSaveDialog && (
+          <SaveOutfitDialog
+            onSave={handleSaveOutfit}
+            onClose={() => setShowSaveDialog(false)}
+            saving={saving}
+            error={saveError}
+          />
+        )}
 
         {/* Measurement panel */}
         <MeasurementPanel
