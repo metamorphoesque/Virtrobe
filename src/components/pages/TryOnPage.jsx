@@ -13,6 +13,8 @@ import { useGarmentUpload } from '../../hooks/useGarmentUpload';
 import { useUnitConversion } from '../../hooks/useUnitConversion';
 import { useNotification } from '../../hooks/useNotification';
 import garmentTemplateService from '../../services/garmentTemplateService';
+import { useSaveOutfit }    from '../../hooks/useSaveOutfit';
+import SaveOutfitDialog     from '../TryOn/SaveOutfitDialog';
 
 // ---------------------------------------------------------------------------
 // Slot routing
@@ -24,6 +26,8 @@ const LOWER_TYPES = new Set([
 ]);
 const slotForType = (type) =>
   LOWER_TYPES.has(type?.toLowerCase()) ? LOWER_SLOT : UPPER_SLOT;
+const [showSaveDialog, setShowSaveDialog] = useState(false);
+const { saveOutfit, saving, error: saveError } = useSaveOutfit(user);
 
 // ---------------------------------------------------------------------------
 // Auth modal — full-screen overlay on top of TryOnPage
@@ -138,20 +142,31 @@ const TryOnPage = ({ onSave, onSaveOutfit, onShare, user, onUserChange }) => {
     return canvas ? canvas.toDataURL('image/jpeg', 0.9) : null;
   };
 
-  const handleSaveOutfit = () => {
-    if (!isLoggedIn) { setShowAuthModal(true); return; }
-    onSaveOutfit?.({
-      id: Date.now(),
-      name: `Outfit ${new Date().toLocaleDateString()}`,
-      measurements: bodyMeasurements.measurements,
-      upperGarment,
-      lowerGarment,
-      upperTemplateId,
-      lowerTemplateId,
-      imageUrl: captureScreenshot(),
+  // 3. ADD this handler in TryOnPage (alongside handleGarmentSelect etc):
+const handleSaveOutfit = async ({ name, description, tags, isPublic }) => {
+  try {
+    // Grab the canvas element from the DOM
+    // Your Scene is rendered inside a div with className "w-full h-full"
+    const canvasEl = document.querySelector('canvas');
+
+    await saveOutfit({
+      name,
+      description,
+      tags,
+      isPublic,
+      measurements,          // your existing measurements state
+      upperTemplateId: selectedUpperTemplateId ?? null,   // your upper garment state
+      lowerTemplateId: selectedLowerTemplateId ?? null,   // your lower garment state
+      canvasEl,
     });
-    saveNotification.show();
-  };
+
+    setShowSaveDialog(false);
+    // Optionally show a success notification here
+  } catch (err) {
+    // saveError state is set automatically by the hook
+    console.error('Save failed:', err);
+  }
+};
 
   const handlePost = () => {
     if (!isLoggedIn) { setShowAuthModal(true); return; }
