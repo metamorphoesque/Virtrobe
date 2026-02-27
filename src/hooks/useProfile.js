@@ -1,27 +1,19 @@
 // src/hooks/useProfile.js
 // Full CRUD for user profile and their saved outfit designs.
-// All writes are RLS-protected — users can only modify their own rows.
+// Imports the shared supabase client from authService to avoid
+// creating a second Supabase instance.
 
 import { useState, useEffect, useCallback } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../services/authService';
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
-
-// ---------------------------------------------------------------------------
-// useProfile(userId)
-// Pass the authenticated users UUID.
-//---------------------------------------------------------------------------
 export const useProfile = (userId) => {
-  const [profile, setProfile]   = useState(null);
-  const [outfits, setOutfits]   = useState([]);   // all saved outfits with screenshot URLs
-  const [loading, setLoading]   = useState(true);
-  const [saving,  setSaving]    = useState(false);
-  const [error,   setError]     = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [outfits, setOutfits] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving,  setSaving]  = useState(false);
+  const [error,   setError]   = useState(null);
 
-  // ── READ: fetch profile ──────────────────────────────────────────────────
+  // ── READ: profile row ────────────────────────────────────────────────────
   const fetchProfile = useCallback(async () => {
     if (!userId) return;
     const { data, error: err } = await supabase
@@ -29,11 +21,26 @@ export const useProfile = (userId) => {
       .select('id, username, display_name, bio, location, website_url, avatar_url, created_at')
       .eq('id', userId)
       .single();
-    if (err) { setError(err.message); return; }
+
+    if (err) {
+      // Profile not created yet (trigger may still be running) — retry once
+      if (err.code === 'PGRST116') {
+        await new Promise((r) => setTimeout(r, 1200));
+        const { data: retry } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .single();
+        if (retry) setProfile(retry);
+        return;
+      }
+      setError(err.message);
+      return;
+    }
     setProfile(data);
   }, [userId]);
 
-  // ── READ: fetch saved outfits with signed screenshot URLs ───────────────
+  // ── READ: saved outfits with signed screenshot URLs ──────────────────────
   const fetchOutfits = useCallback(async () => {
     if (!userId) return;
     const { data, error: err } = await supabase
@@ -59,7 +66,7 @@ export const useProfile = (userId) => {
 
   // ── Initial load ─────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) { setLoading(false); return; }
     setLoading(true);
     Promise.all([fetchProfile(), fetchOutfits()])
       .finally(() => setLoading(false));
@@ -74,11 +81,11 @@ export const useProfile = (userId) => {
       const { data, error: err } = await supabase
         .from('profiles')
         .update({
-          display_name: fields.display_name?.trim()   || null,
+          display_name: fields.display_name?.trim() || null,
           username:     fields.username?.trim().toLowerCase() || null,
-          bio:          fields.bio?.trim()            || null,
-          location:     fields.location?.trim()       || null,
-          website_url:  fields.website_url?.trim()    || null,
+          bio:          fields.bio?.trim()          || null,
+          location:     fields.location?.trim()     || null,
+          website_url:  fields.website_url?.trim()  || null,
         })
         .eq('id', userId)
         .select()
@@ -100,22 +107,16 @@ export const useProfile = (userId) => {
     setSaving(true);
     setError(null);
     try {
-      const ext      = file.name.split('.').pop();
-      const path     = `${userId}/avatar.${ext}`;
-
-      // Upload (upsert replaces existing avatar)
+      const ext  = file.name.split('.').pop();
+      const path = `${userId}/avatar.${ext}`;
       const { error: upErr } = await supabase.storage
         .from('avatars')
         .upload(path, file, { contentType: file.type, upsert: true });
       if (upErr) throw upErr;
 
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(path);
-      const avatarUrl = urlData.publicUrl + `?t=${Date.now()}`; // cache-bust
+      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
+      const avatarUrl = urlData.publicUrl + `?t=${Date.now()}`;
 
-      // Save to profile
       const { data, error: profErr } = await supabase
         .from('profiles')
         .update({ avatar_url: avatarUrl })
@@ -135,7 +136,7 @@ export const useProfile = (userId) => {
 
   // ── DELETE: remove avatar ────────────────────────────────────────────────
   const removeAvatar = useCallback(async () => {
-    if (!userId) throw new Error('Not authenticated');
+    if (!userId) return;
     setSaving(true);
     try {
       await supabase.from('profiles').update({ avatar_url: null }).eq('id', userId);
@@ -145,22 +146,18 @@ export const useProfile = (userId) => {
     }
   }, [userId]);
 
-  // ── DELETE: remove a saved outfit ────────────────────────────────────────
+  // ── DELETE: remove saved outfit ──────────────────────────────────────────
   const deleteOutfit = useCallback(async (outfitId) => {
-    // Optimistic remove
     setOutfits((prev) => prev.filter((o) => o.id !== outfitId));
     const { error: err } = await supabase
       .from('outfits')
       .delete()
       .eq('id', outfitId)
-      .eq('user_id', userId); // RLS double-check
-    if (err) {
-      setError(err.message);
-      fetchOutfits(); // re-sync on failure
-    }
+      .eq('user_id', userId);
+    if (err) { setError(err.message); fetchOutfits(); }
   }, [userId, fetchOutfits]);
 
-  //UPDATE: toggle outfit visibility ────────────────────────────────────
+  // ── UPDATE: toggle outfit visibility ────────────────────────────────────
   const toggleOutfitVisibility = useCallback(async (outfitId, isPublic) => {
     setOutfits((prev) => prev.map((o) => o.id === outfitId ? { ...o, is_public: isPublic } : o));
     await supabase.from('outfits').update({ is_public: isPublic }).eq('id', outfitId);
