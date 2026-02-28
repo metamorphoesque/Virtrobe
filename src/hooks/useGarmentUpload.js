@@ -5,8 +5,25 @@
 // ============================================
 
 import { useState } from 'react';
+import { supabase } from '../lib/supabase';
 
 const API_BASE_URL = 'http://localhost:5000/api';
+
+/**
+ * Get the current user's auth token for backend API calls.
+ * Returns headers object with Authorization if authenticated.
+ */
+async function getAuthHeaders() {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      return { 'Authorization': `Bearer ${session.access_token}` };
+    }
+  } catch (err) {
+    console.warn('⚠️ Could not get auth token:', err.message);
+  }
+  return {};
+}
 
 export const useGarmentUpload = (measurements) => {
   const [uploadedImage, setUploadedImage] = useState(null);
@@ -60,14 +77,20 @@ export const useGarmentUpload = (measurements) => {
       reader.readAsDataURL(file);
       setProgress(10);
 
-      // Send to backend
+      // Send to backend (with auth token)
       const formData = new FormData();
       formData.append('image', file);
       formData.append('garment_type', garmentType || 'shirt');
 
+      const authHeaders = await getAuthHeaders();
+
       const response = await fetch(`${API_BASE_URL}/garments/generate-sync`, {
         method: 'POST',
-        body: formData
+        body: formData,
+        headers: {
+          ...authHeaders,
+          // Note: Do NOT set Content-Type here — fetch auto-sets it with boundary for FormData
+        },
       });
 
       if (!response.ok) {
