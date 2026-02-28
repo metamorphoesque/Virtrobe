@@ -1,14 +1,11 @@
 // src/services/authService.js
-import { createClient } from '@supabase/supabase-js';
+// Uses the shared Supabase client from src/lib/supabase.js
+// Do NOT call createClient() here — that creates duplicate GoTrueClient instances.
+import { supabase } from '../lib/supabase';
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
-  { auth: { persistSession: true, autoRefreshToken: true } }
-);
-
-// Export the client so hooks like useProfile can share the same instance
+// Re-export so existing imports like `import { supabase } from '../services/authService'` keep working
 export { supabase };
+
 
 const authService = {
 
@@ -22,7 +19,7 @@ const authService = {
         // separate DB fetch immediately after signup
         data: {
           display_name: displayName?.trim() || username,
-          username:     username.trim().toLowerCase(),
+          username: username.trim().toLowerCase(),
         },
       },
     });
@@ -37,11 +34,11 @@ const authService = {
     const { error: profileError } = await supabase
       .from('profiles')
       .upsert({
-        id:           user.id,
-        username:     username.trim().toLowerCase(),
+        id: user.id,
+        username: username.trim().toLowerCase(),
         display_name: displayName?.trim() || username,
-        bio:          '',
-        avatar_url:   null,
+        bio: '',
+        avatar_url: null,
       }, { onConflict: 'id', ignoreDuplicates: true });
 
     // Profile creation failure is non-fatal — trigger is the reliable path

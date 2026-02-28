@@ -10,7 +10,6 @@
 // ═══════════════════════════════════════════════════════════════════
 
 import * as THREE from 'three';
-import meshStandardizer from './meshStandardizer';
 
 // ─────────────────────────────────────────────
 //  CONSTANTS
@@ -64,17 +63,6 @@ function detectBodyZone(garmentData) {
 }
 
 /**
- * Detect the source of a garment mesh for orientation correction.
- */
-function detectSource(garmentData) {
-    if (garmentData.isTemplate || garmentData.fromCache) return 'template';
-    if (garmentData.modelUrl?.includes('triposr') ||
-        garmentData.modelUrl?.includes('huggingface')) return 'triposr';
-    if (garmentData.modelUrl?.includes('localhost:5000')) return 'triposr';
-    return 'unknown';
-}
-
-/**
  * Measure the width of a horizontal slice of the mesh.
  * yMinFrac / yMaxFrac are fractions of the mesh's total height.
  * Returns the X-axis span of vertices in that band.
@@ -93,16 +81,12 @@ function measureSliceWidth(mesh, yMinFrac, yMaxFrac) {
     mesh.traverse(child => {
         if (!child.isMesh || !child.geometry?.attributes?.position) return;
         const pos = child.geometry.attributes.position;
-        const vertex = new THREE.Vector3();
 
         for (let i = 0; i < pos.count; i++) {
-            vertex.fromBufferAttribute(pos, i);
-            // Apply the child's local transform to get mesh-space coordinates
-            child.localToWorld(vertex);
-
-            if (vertex.y >= yBandMin && vertex.y <= yBandMax) {
-                minX = Math.min(minX, vertex.x);
-                maxX = Math.max(maxX, vertex.x);
+            const y = pos.getY(i);
+            if (y >= yBandMin && y <= yBandMax) {
+                minX = Math.min(minX, pos.getX(i));
+                maxX = Math.max(maxX, pos.getX(i));
                 found++;
             }
         }
@@ -132,23 +116,18 @@ function measureSliceWidth(mesh, yMinFrac, yMaxFrac) {
  */
 export function normalizeGarment(mesh, garmentData, measurements, mannequinRef) {
     const bodyZone = detectBodyZone(garmentData);
-    const source = detectSource(garmentData);
     const zone = BODY_ZONES[bodyZone];
 
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log(`🔧 NORMALIZING "${garmentData.name}" | zone=${bodyZone} | source=${source}`);
+    console.log(`🔧 NORMALIZING "${garmentData.name}" | zone=${bodyZone}`);
 
-    // ── Step 1: Reset transforms ─────────────────────────────────────────
+    // ── Step 1: Reset transforms (keep native scale) ─────────────────────
     mesh.position.set(0, 0, 0);
     mesh.quaternion.identity();
     mesh.scale.set(1, 1, 1);
     mesh.updateMatrixWorld(true);
 
-    // ── Step 2: Orientation correction (via meshStandardizer) ────────────
-    meshStandardizer.applyStandardization(mesh, source);
-    // After this, mesh height (Y) is normalized to ~1.0, centered at origin
-
-    // ── Step 3: Get mannequin world-space dimensions ─────────────────────
+    // ── Step 2: Get mannequin world-space dimensions ─────────────────────
     let mannWorldHeight = 1.6; // fallback
     let mannCenter = new THREE.Vector3(0, 1, 0);
     let mannMin = 0;
@@ -166,13 +145,13 @@ export function normalizeGarment(mesh, garmentData, measurements, mannequinRef) 
     const personHeight_cm = measurements?.height_cm || 170;
     const worldPerCm = mannWorldHeight / personHeight_cm;
 
-    // ── Step 4: Compute the body-zone height in world units ──────────────
+    // ── Step 3: Compute the body-zone height in world units ──────────────
     const zoneWorldHeight = mannWorldHeight * (zone.topFrac - zone.bottomFrac);
 
-    // ── Step 5: Measure the garment's relevant width at the anchor slice ─
+    // ── Step 4: Measure the garment's relevant width at the anchor slice ─
     const garmentSliceWidth = measureSliceWidth(mesh, zone.sliceBand[0], zone.sliceBand[1]);
 
-    // ── Step 6: Compute the target width from measurements ───────────────
+    // ── Step 5: Compute the target width from measurements ───────────────
     const rawMeasurement = measurements?.[zone.measurementKey] || zone.measurementBaseline;
     let targetWidth_cm = rawMeasurement;
 
@@ -183,26 +162,26 @@ export function normalizeGarment(mesh, garmentData, measurements, mannequinRef) 
 
     const targetWorldWidth = targetWidth_cm * worldPerCm;
 
-    // ── Step 7: Compute uniform scale ────────────────────────────────────
+    // ── Step 6: Compute uniform scale ────────────────────────────────────
     // Scale so the garment's relevant slice matches the mannequin's body width
     let scale = garmentSliceWidth > 0.001 ? targetWorldWidth / garmentSliceWidth : 1;
 
     // Safety clamp — don't allow absurd scales
-    scale = Math.max(0.1, Math.min(5.0, scale));
+    scale = Math.max(0.05, Math.min(5.0, scale));
 
     // For bottoms, add a small ease factor (garments are slightly wider than body)
     if (bodyZone === 'lower') {
         scale *= 1.08;
     }
 
-    // ── Step 8: Compute anchor Y position ────────────────────────────────
+    // ── Step 7: Compute anchor Y position ────────────────────────────────
     let anchorY;
     if (mannequinRef?.current) {
         const getLandmarks = mannequinRef.current.getLiveLandmarks;
         if (getLandmarks) {
             const lm = getLandmarks();
             const anchorLandmark = bodyZone === 'upper'
-                ? (lm['landmark_neck'] || lm['landmark_shoulder_left'])
+                ? (lm['landmark_neck'] || lm['landmark_shoulder_L'])
                 : (lm['landmark_waist'] || lm['landmark_hips']);
 
             if (anchorLandmark) {
@@ -219,7 +198,7 @@ export function normalizeGarment(mesh, garmentData, measurements, mannequinRef) 
         anchorY = mannMin + mannWorldHeight * zone.anchorFrac;
     }
 
-    // ── Step 9: Compute garment top offset for positioning ───────────────
+    // ── Step 8: Compute garment top offset for positioning ───────────────
     const gBox = new THREE.Box3().setFromObject(mesh);
     const gSize = new THREE.Vector3();
     gBox.getSize(gSize);

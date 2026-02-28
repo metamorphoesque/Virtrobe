@@ -6,6 +6,8 @@ const path = require('path');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const garmentRoutes = require('./routes/garments');
+const devRoutes = require('./routes/devRoutes');
+const { devTokenMiddleware } = require('./middleware/devAuth');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -21,7 +23,7 @@ app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-dev-token'],
 }));
 
 // ── Rate Limiting ─────────────────────────────────────────────────────
@@ -49,11 +51,17 @@ app.use('/api/', generalLimiter);
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
+// ── Dev Auth Middleware ───────────────────────────────────────────────
+// Must run before API routes so dev tokens are recognized by requireAuth.
+// No-op in production or when DEV_ACCESS_KEY is not set.
+app.use(devTokenMiddleware);
+
 // ── Static Files ──────────────────────────────────────────────────────
 app.use('/models', express.static(path.join(__dirname, 'generatedModels')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ── API Routes ────────────────────────────────────────────────────────
+app.use('/api/dev', devRoutes);
 app.use('/api/garments', garmentRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────
@@ -95,6 +103,7 @@ app.listen(PORT, () => {
   Cost:     FREE
   Token:    ${process.env.HUGGINGFACE_TOKEN ? '✅ Configured (fast mode)' : '⚠️  Not set (slower - works fine though)'}
   Auth:     ${process.env.SUPABASE_URL ? '✅ Supabase configured' : '⚠️  Not configured (routes unprotected)'}
+  Dev Auth: ${process.env.DEV_ACCESS_KEY && process.env.NODE_ENV !== 'production' ? '✅ DEV_ACCESS_KEY set' : '⚠️  Disabled'}
 
   Endpoints:
   → GET  /api/health
@@ -102,6 +111,8 @@ app.listen(PORT, () => {
   → POST /api/garments/generate        🔒 Auth required
   → GET  /api/garments/availability    (public)
   → GET  /api/garments/list            (public)
+  → POST /api/dev/login                🔧 Dev only
+  → POST /api/dev/logout               🔧 Dev only
 
   ${!process.env.HUGGINGFACE_TOKEN
       ? '💡 Get a FREE token for 2x speed:\n     https://huggingface.co/settings/tokens'

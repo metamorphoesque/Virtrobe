@@ -6,22 +6,17 @@
 //   - comments + likes with realtime
 
 import { useState, useEffect, useCallback } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from '../lib/supabase';
 
 export const useOutfitModal = (submissionId, currentUserId) => {
   const [submission, setSubmission] = useState(null);
   const [upperTemplate, setUpperTemplate] = useState(null); // { id, name, modelUrl, type }
   const [lowerTemplate, setLowerTemplate] = useState(null);
-  const [comments, setComments]     = useState([]);
-  const [liked, setLiked]           = useState(false);
-  const [likeCount, setLikeCount]   = useState(0);
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState(null);
+  const [comments, setComments] = useState([]);
+  const [liked, setLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   //── Resolve a garment templates model URL from storage ─────────────────
   const resolveTemplateUrl = useCallback(async (templateId) => {

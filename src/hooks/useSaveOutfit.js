@@ -6,12 +6,7 @@
 //   4. Optionally inserts into public_submissions
 
 import { useState, useCallback } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from '../lib/supabase';
 
 // ---------------------------------------------------------------------------
 // Capture the Three.js <canvas> as a PNG blob.
@@ -39,7 +34,7 @@ export const captureCanvas = (canvasEl) => {
 // ---------------------------------------------------------------------------
 export const useSaveOutfit = (user) => {
   const [saving, setSaving] = useState(false);
-  const [error, setError]   = useState(null);
+  const [error, setError] = useState(null);
 
   const saveOutfit = useCallback(async ({
     name,               // string
@@ -76,16 +71,16 @@ export const useSaveOutfit = (user) => {
       const { data: outfit, error: outfitErr } = await supabase
         .from('outfits')
         .insert({
-          user_id:               user.id,
-          name:                  name.trim(),
-          description:           description?.trim() || null,
-          tags:                  tags ?? [],
-          is_public:             isPublic,
-          upper_template_id:     upperTemplateId ?? null,
-          lower_template_id:     lowerTemplateId ?? null,
+          user_id: user.id,
+          name: name.trim(),
+          description: description?.trim() || null,
+          tags: tags ?? [],
+          is_public: isPublic,
+          upper_template_id: upperTemplateId ?? null,
+          lower_template_id: lowerTemplateId ?? null,
           measurements_snapshot: measurements,
-          screenshot_url:        screenshotPath,
-          saved_at:              new Date().toISOString(),
+          screenshot_url: screenshotPath,
+          saved_at: new Date().toISOString(),
         })
         .select('id')
         .single();
@@ -97,7 +92,7 @@ export const useSaveOutfit = (user) => {
         const { error: subErr } = await supabase
           .from('public_submissions')
           .insert({
-            outfit_id:    outfit.id,
+            outfit_id: outfit.id,
             submitted_by: user.id,
             submitted_at: new Date().toISOString(),
           });

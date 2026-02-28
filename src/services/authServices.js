@@ -1,15 +1,8 @@
-// src/services/authService.js
-// Frontend-only auth service — uses Supabase anon key.
-// Security is enforced by Row Level Security (RLS) in your Supabase project.
-// Never import anything from server/ into this file.
+// src/services/authServices.js
+// LEGACY — redirects to the shared Supabase client.
+// Prefer importing from '../services/authService' (singular) instead.
 
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
-  { auth: { persistSession: true, autoRefreshToken: true } }
-);
+import { supabase } from '../lib/supabase';
 
 const authService = {
   async signUp({ email, password, username, displayName }) {

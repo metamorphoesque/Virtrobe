@@ -30,28 +30,70 @@ const _correction = new THREE.Quaternion().setFromAxisAngle(
 // ─────────────────────────────────────────────
 //  SURFACE CONFORM — runs ONCE after positioning
 //
-//  Strategy:
-//  For each garment vertex, check if it's inside the
-//  mannequin bounding ellipsoid. If so, push it outward
-//  horizontally to just outside the surface + fabric offset.
+//  Strategy (v2 — raycasting):
+//  For each garment vertex, cast a horizontal ray from the
+//  mannequin center-axis outward. If the vertex sits closer
+//  to the axis than the mannequin surface, push it outward
+//  to  surface + fabric offset.
 //
-//  We approximate the mannequin surface as a vertical ellipsoid
-//  (cheap, no raycasting needed, zero runtime cost).
+//  This conforms to the ACTUAL mannequin geometry instead of
+//  a crude ellipsoid, so garments wrap around the real body
+//  curvature — narrower at waist, wider at hips/chest, etc.
 // ─────────────────────────────────────────────
-const DRAPE_OFFSET = 0.012; // world units — fabric thickness above surface
 
-function applyDrapeConform(garmentMesh, mannequinBox, garmentScale) {
+// Per-body-zone fabric offsets (world units)
+const DRAPE_OFFSETS = {
+  torso: 0.015,   // chest / waist / hips — slightly thicker
+  limbs: 0.010,   // arms / legs — thinner
+  default: 0.012,
+};
+
+// Decide offset based on vertex Y position relative to mannequin
+function getDrapeOffset(vertexWorldY, mannBox) {
+  const mannSize = new THREE.Vector3();
+  mannBox.getSize(mannSize);
+  const yFrac = (vertexWorldY - mannBox.min.y) / mannSize.y; // 0 = feet, 1 = top
+  // Torso band: roughly 35%–85% of height
+  if (yFrac >= 0.35 && yFrac <= 0.85) return DRAPE_OFFSETS.torso;
+  return DRAPE_OFFSETS.limbs;
+}
+
+/**
+ * Collect all Mesh children from a scene graph into a flat array.
+ * Used as the raycasting target set.
+ */
+function collectMeshes(root) {
+  const meshes = [];
+  root.traverse(child => {
+    if (child.isMesh && child.geometry) meshes.push(child);
+  });
+  return meshes;
+}
+
+function applyDrapeConform(garmentMesh, mannequinRef, garmentScale) {
+  if (!mannequinRef) return;
+
+  // Get the mannequin bounding box (world space)
+  mannequinRef.updateMatrixWorld(true);
+  const mannBox = new THREE.Box3().setFromObject(mannequinRef);
   const mannCenter = new THREE.Vector3();
   const mannSize = new THREE.Vector3();
-  mannequinBox.getCenter(mannCenter);
-  mannequinBox.getSize(mannSize);
+  mannBox.getCenter(mannCenter);
+  mannBox.getSize(mannSize);
 
-  // Ellipsoid radii — half the mannequin dimensions + small buffer
-  const rx = mannSize.x / 2 + DRAPE_OFFSET;
-  const ry = mannSize.y / 2;
-  const rz = mannSize.z / 2 + DRAPE_OFFSET;
+  // Collect the mannequin's actual mesh geometry for raycasting
+  const mannMeshes = collectMeshes(mannequinRef);
+  if (mannMeshes.length === 0) {
+    console.warn('⚠️ Drape conform: no mannequin meshes found, skipping');
+    return;
+  }
+
+  const raycaster = new THREE.Raycaster();
+  raycaster.near = 0;
+  raycaster.far = mannSize.x * 2; // generous range
 
   let conformedCount = 0;
+  let rayMissCount = 0;
 
   garmentMesh.traverse(child => {
     if (!child.isMesh || !child.geometry?.attributes?.position) return;
@@ -63,37 +105,48 @@ function applyDrapeConform(garmentMesh, mannequinBox, garmentScale) {
     for (let i = 0; i < posAttr.count; i++) {
       vertex.fromBufferAttribute(posAttr, i);
 
-      // Convert vertex to world space (geometry is at scale=1 at this point)
+      // Convert vertex to world space
       const worldX = vertex.x * garmentScale;
       const worldY = vertex.y * garmentScale;
       const worldZ = vertex.z * garmentScale;
 
-      // Vector from mannequin center to this vertex
+      // Vector from mannequin center axis to vertex (horizontal only)
       const dx = worldX - mannCenter.x;
-      const dy = worldY - mannCenter.y;
       const dz = worldZ - mannCenter.z;
+      const horizDist = Math.sqrt(dx * dx + dz * dz);
 
-      // Check if vertex is inside the mannequin ellipsoid
-      const ellipsoidVal = (dx / rx) ** 2 + (dy / ry) ** 2 + (dz / rz) ** 2;
+      if (horizDist < 0.0005) continue; // vertex is on the center axis, skip
 
-      if (ellipsoidVal < 1.0) {
-        const horizLen = Math.sqrt(dx * dx + dz * dz);
+      // Horizontal direction from center to vertex
+      const dirX = dx / horizDist;
+      const dirZ = dz / horizDist;
 
-        if (horizLen > 0.001) {
-          const nx = dx / horizLen;
-          const nz = dz / horizLen;
+      // Cast ray from mannequin center axis outward at this Y level
+      const rayOrigin = new THREE.Vector3(mannCenter.x, worldY, mannCenter.z);
+      const rayDir = new THREE.Vector3(dirX, 0, dirZ).normalize();
+      raycaster.set(rayOrigin, rayDir);
 
-          const yFrac = Math.min(1, Math.abs(dy) / ry);
-          const xzRadius = rx * Math.sqrt(Math.max(0, 1 - yFrac * yFrac));
+      // Find intersection with mannequin surface
+      const hits = raycaster.intersectObjects(mannMeshes, false);
 
-          const targetWorldX = mannCenter.x + nx * (xzRadius + DRAPE_OFFSET);
-          const targetWorldZ = mannCenter.z + nz * (xzRadius + DRAPE_OFFSET);
+      if (hits.length > 0) {
+        // Distance from center axis to mannequin surface
+        const surfaceDist = hits[0].distance;
+        const offset = getDrapeOffset(worldY, mannBox);
+
+        // If vertex is inside (closer to axis than surface), push it out
+        if (horizDist < surfaceDist + offset) {
+          const targetDist = surfaceDist + offset;
+          const targetWorldX = mannCenter.x + dirX * targetDist;
+          const targetWorldZ = mannCenter.z + dirZ * targetDist;
 
           posAttr.setX(i, targetWorldX / garmentScale);
           posAttr.setZ(i, targetWorldZ / garmentScale);
           modified = true;
           conformedCount++;
         }
+      } else {
+        rayMissCount++;
       }
     }
 
@@ -105,7 +158,7 @@ function applyDrapeConform(garmentMesh, mannequinBox, garmentScale) {
     }
   });
 
-  console.log(`🧥 Drape conform: pushed ${conformedCount} vertices outside mannequin surface`);
+  console.log(`🧥 Drape conform: pushed ${conformedCount} vertices outside mannequin surface (${rayMissCount} ray misses)`);
 }
 
 // ─────────────────────────────────────────────
@@ -202,7 +255,7 @@ const GarmentMesh = ({ modelUrl, garmentData, mannequinRef, measurements }) => {
 
       let anchorNode;
       if (bodyZone === 'upper') {
-        anchorNode = lm['landmark_neck'] || lm['landmark_shoulder_left'];
+        anchorNode = lm['landmark_neck'] || lm['landmark_shoulder_L'];
       } else {
         anchorNode = lm['landmark_waist'] || lm['landmark_hips'];
       }
@@ -226,8 +279,7 @@ const GarmentMesh = ({ modelUrl, garmentData, mannequinRef, measurements }) => {
       conformedRef.current = true;
       setTimeout(() => {
         if (!mannequinRef.current) return;
-        const freshMannBox = new THREE.Box3().setFromObject(mannequinRef.current);
-        applyDrapeConform(normalized.mesh, freshMannBox, normalized.scale);
+        applyDrapeConform(normalized.mesh, mannequinRef.current, normalized.scale);
       }, 100);
     }
   });
