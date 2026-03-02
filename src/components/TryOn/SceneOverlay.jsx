@@ -132,6 +132,7 @@ const SceneOverlay = ({
   isLoggedIn,
   mannequinSelected,
   onOpenAuth,       // called when unauthenticated user clicks a gated button
+  onSave,           // opens the SaveOutfitDialog
 }) => {
   return (
     <>
@@ -217,7 +218,7 @@ const SceneOverlay = ({
       >
         <ActionButton
           label="Save Outfit"
-          onClick={onSaveOutfit}
+          onClick={onSave}
           isLoggedIn={isLoggedIn}
           disabledReason="Sign in to save outfits"
           onOpenAuth={onOpenAuth}

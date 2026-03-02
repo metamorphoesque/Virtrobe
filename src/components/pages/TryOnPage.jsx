@@ -153,6 +153,8 @@ const TryOnPage = ({ onSave, onSaveOutfit, onShare, user, onUserChange }) => {
         description,
         tags,
         isPublic,
+        // bodyMeasurements.measurements must include your shape key values, e.g.:
+        // { gender, height, shoulder, bust, waist, hips, ... }
         measurements: bodyMeasurements.measurements,
         upperTemplateId: upperTemplateId ?? null,
         lowerTemplateId: lowerTemplateId ?? null,

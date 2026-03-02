@@ -8,6 +8,7 @@ const rateLimit = require('express-rate-limit');
 const garmentRoutes = require('./routes/garments');
 const devRoutes = require('./routes/devRoutes');
 const { devTokenMiddleware } = require('./middleware/devAuth');
+const outfitsRouter = require('./routes/outfits');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -55,6 +56,7 @@ app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 // Must run before API routes so dev tokens are recognized by requireAuth.
 // No-op in production or when DEV_ACCESS_KEY is not set.
 app.use(devTokenMiddleware);
+app.use('/api/outfits', outfitsRouter);
 
 // ── Static Files ──────────────────────────────────────────────────────
 app.use('/models', express.static(path.join(__dirname, 'generatedModels')));
