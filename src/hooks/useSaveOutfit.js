@@ -3,6 +3,7 @@
 //   1. Captures the Three.js canvas as a base64 PNG
 //   2. POSTs to Express /api/outfits/save with measurements + garment IDs
 //   3. Server uploads screenshot to Supabase storage & inserts DB rows
+//   4. Returns full outfit data including signed screenshot URL
 
 import { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
@@ -36,7 +37,7 @@ export const captureCanvas = (canvasEl) =>
 // ---------------------------------------------------------------------------
 export const useSaveOutfit = (user) => {
   const [saving, setSaving] = useState(false);
-  const [error, setError]   = useState(null);
+  const [error, setError] = useState(null);
 
   const saveOutfit = useCallback(
     async ({
@@ -45,10 +46,12 @@ export const useSaveOutfit = (user) => {
       tags,              // string[]
       isPublic,          // boolean
       measurements,      // full measurements object — includes shape key values:
-                         //   { gender, height, shoulder, bust, waist, hips, ... }
+      //   { gender, height_cm, weight_kg, bmi, bust_cm, waist_cm, hips_cm, shoulder_width_cm }
       upperTemplateId,   // uuid | null
       lowerTemplateId,   // uuid | null
       canvasEl,          // HTMLCanvasElement — the Three.js canvas
+      dominantColor,     // string | null
+      garmentType,       // string | null
     }) => {
       if (!user) throw new Error('Must be signed in to save an outfit');
 
@@ -85,6 +88,8 @@ export const useSaveOutfit = (user) => {
             upperTemplateId: upperTemplateId ?? null,
             lowerTemplateId: lowerTemplateId ?? null,
             screenshotBase64,               // null if capture failed
+            dominantColor: dominantColor ?? null,
+            garmentType: garmentType ?? null,
           }),
         });
 
@@ -93,8 +98,9 @@ export const useSaveOutfit = (user) => {
           throw new Error(body.error || `Server error ${resp.status}`);
         }
 
-        const { outfitId } = await resp.json();
-        return outfitId;
+        // Server returns: { outfitId, name, savedAt, isPublic, submissionId, screenshotSignedUrl }
+        const result = await resp.json();
+        return result;
       } catch (err) {
         setError(err.message);
         throw err;

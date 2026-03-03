@@ -52,7 +52,7 @@ const AuthModal = ({ onClose, onAuthSuccess }) => (
 // ---------------------------------------------------------------------------
 // TryOnPage
 // ---------------------------------------------------------------------------
-const TryOnPage = ({ onSave, onSaveOutfit, onShare, user, onUserChange }) => {
+const TryOnPage = ({ onSave, onSaveOutfit, onShare, user, onUserChange, onNavigate }) => {
   const isLoggedIn = !!user;
 
   // Auth modal state
@@ -71,7 +71,7 @@ const TryOnPage = ({ onSave, onSaveOutfit, onShare, user, onUserChange }) => {
   const bodyMeasurements = useBodyMeasurements();
   const garmentUpload = useGarmentUpload(bodyMeasurements.measurements);
   const unitConversion = useUnitConversion();
-  const saveNotification = useNotification(3000);
+  const notification = useNotification(4500);
   const { saveOutfit, saving, error: saveError } = useSaveOutfit(user);
 
   const hasAnyGarment = !!(upperGarment || lowerGarment);
@@ -144,38 +144,83 @@ const TryOnPage = ({ onSave, onSaveOutfit, onShare, user, onUserChange }) => {
     return canvas ? canvas.toDataURL('image/jpeg', 0.9) : null;
   };
 
+  // ── Save outfit (private or public) ─────────────────────────────────────────
   const handleSaveOutfit = async ({ name, description, tags, isPublic }) => {
     try {
       const canvasEl = document.querySelector('canvas');
 
-      await saveOutfit({
+      // Determine garment type based on what's equipped
+      let garmentType = null;
+      if (upperGarment && lowerGarment) garmentType = 'full-outfit';
+      else if (upperGarment) garmentType = upperGarment.type ?? selectedClothingType;
+      else if (lowerGarment) garmentType = lowerGarment.type ?? selectedClothingType;
+
+      // Extract dominant color from garment data if available
+      const dominantColor = upperGarment?.dominantColor ?? lowerGarment?.dominantColor ?? null;
+
+      const result = await saveOutfit({
         name,
         description,
         tags,
         isPublic,
-        // bodyMeasurements.measurements must include your shape key values, e.g.:
-        // { gender, height, shoulder, bust, waist, hips, ... }
         measurements: bodyMeasurements.measurements,
         upperTemplateId: upperTemplateId ?? null,
         lowerTemplateId: lowerTemplateId ?? null,
         canvasEl,
+        dominantColor,
+        garmentType,
       });
 
       setShowSaveDialog(false);
-      saveNotification.show();
+
+      // Show rich notification based on save type
+      if (isPublic) {
+        notification.show({
+          message: `"${name}" saved & posted on Virtrobe!`,
+          type: 'posted',
+          duration: 5000,
+          action: onNavigate ? {
+            label: 'View in Profile',
+            onClick: () => onNavigate('profile'),
+          } : null,
+        });
+      } else {
+        notification.show({
+          message: `"${name}" saved to your profile`,
+          type: 'success',
+          duration: 4000,
+          action: onNavigate ? {
+            label: 'View in Profile',
+            onClick: () => onNavigate('profile'),
+          } : null,
+        });
+      }
+
+      return result;
     } catch (err) {
-      // saveError state is set automatically by the hook
+      // Show error notification
+      notification.show({
+        message: `Save failed: ${err.message}`,
+        type: 'error',
+        duration: 6000,
+      });
       console.error('Save failed:', err);
     }
   };
 
+  // ── Post outfit (save as public) ────────────────────────────────────────────
   const handlePost = () => {
     if (!isLoggedIn) { setShowAuthModal(true); return; }
-    onShare?.({
-      screenshot: captureScreenshot(),
-      upperGarment,
-      lowerGarment,
-    });
+    if (!hasAnyGarment) {
+      notification.show({
+        message: 'Add a garment before posting',
+        type: 'info',
+        duration: 3000,
+      });
+      return;
+    }
+    // Open save dialog pre-set to public
+    setShowSaveDialog(true);
   };
 
   // Called when auth completes inside the modal
@@ -196,7 +241,11 @@ const TryOnPage = ({ onSave, onSaveOutfit, onShare, user, onUserChange }) => {
       )}
 
       <div className="w-full h-[calc(100vh-12rem)] flex bg-white overflow-hidden">
-        <SaveNotification isVisible={saveNotification.isVisible} />
+        <SaveNotification
+          isVisible={notification.isVisible}
+          notifications={notification.notifications}
+          onDismiss={notification.dismiss}
+        />
 
         <div className="flex gap-4 flex-1 overflow-hidden">
 
@@ -254,6 +303,14 @@ const TryOnPage = ({ onSave, onSaveOutfit, onShare, user, onUserChange }) => {
                 onOpenAuth={() => setShowAuthModal(true)}
                 onSave={() => {
                   if (!isLoggedIn) { setShowAuthModal(true); return; }
+                  if (!hasAnyGarment) {
+                    notification.show({
+                      message: 'Add a garment before saving',
+                      type: 'info',
+                      duration: 3000,
+                    });
+                    return;
+                  }
                   setShowSaveDialog(true);
                 }}
               />

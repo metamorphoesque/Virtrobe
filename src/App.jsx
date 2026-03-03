@@ -11,17 +11,17 @@ import {
   Bell, UserCircle2, X, Cookie, Check, Users, Heart,
 } from 'lucide-react';
 
-import HomePage      from './components/pages/HomePage';
-import TryOnPage     from './components/pages/TryOnPage';
+import HomePage from './components/pages/HomePage';
+import TryOnPage from './components/pages/TryOnPage';
 import MoodboardPage from './components/pages/MoodboardPage';
-import ProfilePage   from './components/pages/ProfilePage';
-import AdminPage     from './components/pages/AdminPage';
-import AuthPage      from './components/pages/AuthPage';
-import authService   from './services/authService';
-import DevRouter     from './dev/DevRouter';
+import ProfilePage from './components/pages/ProfilePage';
+import AdminPage from './components/pages/AdminPage';
+import AuthPage from './components/pages/AuthPage';
+import authService from './services/authService';
+import DevRouter from './dev/DevRouter';
 
 const serif = { fontFamily: "'Cormorant Garamond', Georgia, serif" };
-const mono  = { fontFamily: "'DM Mono', 'Courier New', monospace" };
+const mono = { fontFamily: "'DM Mono', 'Courier New', monospace" };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Cookie Consent Banner
@@ -146,10 +146,10 @@ const BrandLogo = ({ onClick }) => {
     <button onClick={onClick} className="relative h-12 flex items-center justify-center overflow-hidden w-72 flex-shrink-0">
       <div className="relative flex items-center justify-center">
         {[
-          { t:'Virt',     s:{ left:'calc(50% - 56px)'  }, c: expanded?'opacity-0 -translate-x-10':'opacity-100 translate-x-0' },
-          { t:'Virtual',  s:{ left:'calc(50% - 132px)' }, c: expanded?'opacity-100 translate-x-0' :'opacity-0 translate-x-10'  },
-          { t:'robe',     s:{ right:'calc(50% - 56px)' }, c: expanded?'opacity-0 translate-x-10'  :'opacity-100 translate-x-0' },
-          { t:'Wardrobe', s:{ right:'calc(50% - 138px)'},  c: expanded?'opacity-100 translate-x-0' :'opacity-0 -translate-x-10' },
+          { t: 'Virt', s: { left: 'calc(50% - 56px)' }, c: expanded ? 'opacity-0 -translate-x-10' : 'opacity-100 translate-x-0' },
+          { t: 'Virtual', s: { left: 'calc(50% - 132px)' }, c: expanded ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-10' },
+          { t: 'robe', s: { right: 'calc(50% - 56px)' }, c: expanded ? 'opacity-0 translate-x-10' : 'opacity-100 translate-x-0' },
+          { t: 'Wardrobe', s: { right: 'calc(50% - 138px)' }, c: expanded ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-10' },
         ].map(({ t, s, c }) => (
           <span key={t} className={`text-black text-3xl font-bold transition-all duration-1000 ease-in-out absolute ${c}`} style={s}>{t}</span>
         ))}
@@ -162,12 +162,12 @@ const BrandLogo = ({ onClick }) => {
 // Notification Bell — auth-gated, shown only when logged in
 // ─────────────────────────────────────────────────────────────────────────────
 const NotificationBell = ({ userId }) => {
-  const [open,   setOpen]   = useState(false);
+  const [open, setOpen] = useState(false);
   // Stub notifications — wire to a real notifications table later
   const notifs = [
-    { id:'n1', text:'miachen liked your Autumn Edit look.',    time:'2m ago',  read:false },
-    { id:'n2', text:'jamesporter started following you.',      time:'18m ago', read:false },
-    { id:'n3', text:'Your Studio Look was featured publicly.', time:'1h ago',  read:true  },
+    { id: 'n1', text: 'miachen liked your Autumn Edit look.', time: '2m ago', read: false },
+    { id: 'n2', text: 'jamesporter started following you.', time: '18m ago', read: false },
+    { id: 'n3', text: 'Your Studio Look was featured publicly.', time: '1h ago', read: true },
   ];
   const unread = notifs.filter(n => !n.read).length;
 
@@ -232,25 +232,32 @@ const NotificationBell = ({ userId }) => {
 const Footer = ({ onTabChange, onOpenAuth, user, onSignOut }) => {
   const year = new Date().getFullYear();
   const columns = [
-    { heading:'Virtrobe', links:[
-      { label:'About',   fn:()=>{} },
-      { label:'Blog',    fn:()=>{} },
-      { label:'Careers', fn:()=>{} },
-    ]},
-    { heading:'Product', links:[
-      { label:'Explore',    fn:()=>onTabChange('home')      },
-      { label:'Try On',     fn:()=>onTabChange('tryon')     },
-      { label:'Moodboards', fn:()=>onTabChange('moodboard') },
-    ]},
-    { heading:'Account', links: user
-      ? [{ label:'My Profile', fn:()=>onTabChange('profile') }, { label:'Sign out', fn:onSignOut }]
-      : [{ label:'Sign in', fn:onOpenAuth }, { label:'Create account', fn:onOpenAuth }],
+    {
+      heading: 'Virtrobe', links: [
+        { label: 'About', fn: () => { } },
+        { label: 'Blog', fn: () => { } },
+        { label: 'Careers', fn: () => { } },
+      ]
     },
-    { heading:'Legal', links:[
-      { label:'Privacy Policy',   fn:()=>{} },
-      { label:'Terms of Service', fn:()=>{} },
-      { label:'Cookie Policy',    fn:()=>{} },
-    ]},
+    {
+      heading: 'Product', links: [
+        { label: 'Explore', fn: () => onTabChange('home') },
+        { label: 'Try On', fn: () => onTabChange('tryon') },
+        { label: 'Moodboards', fn: () => onTabChange('moodboard') },
+      ]
+    },
+    {
+      heading: 'Account', links: user
+        ? [{ label: 'My Profile', fn: () => onTabChange('profile') }, { label: 'Sign out', fn: onSignOut }]
+        : [{ label: 'Sign in', fn: onOpenAuth }, { label: 'Create account', fn: onOpenAuth }],
+    },
+    {
+      heading: 'Legal', links: [
+        { label: 'Privacy Policy', fn: () => { } },
+        { label: 'Terms of Service', fn: () => { } },
+        { label: 'Cookie Policy', fn: () => { } },
+      ]
+    },
   ];
 
   return (
@@ -283,19 +290,19 @@ const Footer = ({ onTabChange, onOpenAuth, user, onSignOut }) => {
 // Navigation
 // ─────────────────────────────────────────────────────────────────────────────
 const Navigation = ({ tab, onTabChange, user, profile, onOpenAuth, onSignOut, children }) => {
-  const [search,   setSearch]   = useState('');
+  const [search, setSearch] = useState('');
   const [userMenu, setUserMenu] = useState(false);
 
   const displayName = profile?.display_name ?? user?.user_metadata?.display_name ?? user?.email ?? 'Account';
-  const avatarUrl   = profile?.avatar_url   ?? user?.user_metadata?.avatar_url   ?? null;
-  const initials    = displayName[0]?.toUpperCase() ?? '?';
+  const avatarUrl = profile?.avatar_url ?? user?.user_metadata?.avatar_url ?? null;
+  const initials = displayName[0]?.toUpperCase() ?? '?';
 
   // Profile tab is appended only when the user is signed in
   const tabs = [
-    { id:'home',      label:'Explore',    Icon:Grid3x3    },
-    { id:'tryon',     label:'Try On',     Icon:Sparkles   },
-    { id:'moodboard', label:'Moodboards', Icon:BookOpen   },
-    ...(user ? [{ id:'profile', label:'Profile', Icon:UserCircle2 }] : []),
+    { id: 'home', label: 'Explore', Icon: Grid3x3 },
+    { id: 'tryon', label: 'Try On', Icon: Sparkles },
+    { id: 'moodboard', label: 'Moodboards', Icon: BookOpen },
+    ...(user ? [{ id: 'profile', label: 'Profile', Icon: UserCircle2 }] : []),
   ];
 
   return (
@@ -358,8 +365,8 @@ const Navigation = ({ tab, onTabChange, user, profile, onOpenAuth, onSignOut, ch
                         <p className="text-[10px] text-black/28 truncate mt-0.5">{user.email}</p>
                       </div>
                       {[
-                        { label:'My Profile', fn:() => { onTabChange('profile'); setUserMenu(false); } },
-                        { label:'Settings',   fn:() => setUserMenu(false) },
+                        { label: 'My Profile', fn: () => { onTabChange('profile'); setUserMenu(false); } },
+                        { label: 'Settings', fn: () => setUserMenu(false) },
                       ].map(({ label, fn }) => (
                         <button key={label} onClick={fn}
                           className="w-full text-left px-4 py-2.5 text-[11px] text-black/50 hover:text-black hover:bg-black/[0.025] transition-colors">
@@ -383,9 +390,8 @@ const Navigation = ({ tab, onTabChange, user, profile, onOpenAuth, onSignOut, ch
           <div className="flex items-center justify-center gap-1 h-11 border-t border-black/[0.04]">
             {tabs.map(({ id, label, Icon }) => (
               <button key={id} onClick={() => onTabChange(id)}
-                className={`flex items-center gap-1.5 px-5 py-2 rounded-full text-[11px] font-medium transition-all duration-200 ${
-                  tab === id ? 'bg-black text-white' : 'text-black/45 hover:bg-black/5 hover:text-black'
-                }`}
+                className={`flex items-center gap-1.5 px-5 py-2 rounded-full text-[11px] font-medium transition-all duration-200 ${tab === id ? 'bg-black text-white' : 'text-black/45 hover:bg-black/5 hover:text-black'
+                  }`}
               >
                 <Icon className="w-3.5 h-3.5" />{label}
               </button>
@@ -417,7 +423,7 @@ const MannequinPicker = ({ onComplete }) => (
         <p className="text-[12px] text-black/35 mt-2" style={serif}>Choose your mannequin to get started</p>
       </div>
       <div className="grid grid-cols-2 gap-4">
-        {[['female','👗','Feminine'],['male','🧥','Masculine']].map(([g,emoji,label]) => (
+        {[['female', '👗', 'Feminine'], ['male', '🧥', 'Masculine']].map(([g, emoji, label]) => (
           <button key={g} onClick={() => onComplete(g)}
             className="p-8 bg-white border border-black/10 rounded-2xl hover:border-black hover:shadow-lg transition-all duration-300 text-center">
             <div className="text-5xl mb-3">{emoji}</div>
@@ -437,12 +443,12 @@ function App() {
   const devPage = DevRouter();
   if (devPage) return devPage;
 
-  const [welcomed,  setWelcomed]  = useState(false);
-  const [gender,    setGender]    = useState(null);
-  const [tab,       setTab]       = useState('home');
-  const [user,      setUser]      = useState(null);
-  const [profile,   setProfile]   = useState(null);
-  const [showAuth,  setShowAuth]  = useState(false);
+  const [welcomed, setWelcomed] = useState(false);
+  const [gender, setGender] = useState(null);
+  const [tab, setTab] = useState('home');
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [showAuth, setShowAuth] = useState(false);
   const [authReady, setAuthReady] = useState(false);
 
   // Cookie consent: null = not yet decided | 'accepted' | 'rejected'
@@ -457,7 +463,7 @@ function App() {
   const loadProfile = async (u) => {
     if (!u) { setProfile(null); return; }
     try { setProfile(await authService.getProfile(u.id)); }
-    catch  { setProfile(null); }
+    catch { setProfile(null); }
   };
 
   // ── Auth init ────────────────────────────────────────────────────────────
@@ -495,16 +501,16 @@ function App() {
   };
 
   const acceptCookies = () => {
-    localStorage.setItem('vt_cookies','accepted');
+    localStorage.setItem('vt_cookies', 'accepted');
     setCookies('accepted');
   };
   const rejectCookies = () => {
-    localStorage.setItem('vt_cookies','rejected');
+    localStorage.setItem('vt_cookies', 'rejected');
     setCookies('rejected');
   };
 
   const dismissWelcome = () => {
-    sessionStorage.setItem('vt_seen_welcome','1');
+    sessionStorage.setItem('vt_seen_welcome', '1');
     setShowWelcome(false);
   };
 
@@ -558,10 +564,10 @@ function App() {
         onOpenAuth={() => setShowAuth(true)}
         onSignOut={handleSignOut}
       >
-        {tab === 'home'      && <HomePage />}
-        {tab === 'tryon'     && <TryOnPage user={user} userGender={gender} onUserChange={setUser} onOpenAuth={() => setShowAuth(true)} />}
+        {tab === 'home' && <HomePage />}
+        {tab === 'tryon' && <TryOnPage user={user} userGender={gender} onUserChange={setUser} onOpenAuth={() => setShowAuth(true)} onNavigate={handleTabChange} />}
         {tab === 'moodboard' && <MoodboardPage currentUser={user} />}
-        {tab === 'profile'   && (
+        {tab === 'profile' && (
           <ProfilePage
             currentUser={user}
             onOpenAuth={() => setShowAuth(true)}
