@@ -10,8 +10,8 @@ export const useProfile = (userId) => {
   const [profile, setProfile] = useState(null);
   const [outfits, setOutfits] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [saving,  setSaving]  = useState(false);
-  const [error,   setError]   = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
 
   // ── READ: profile row (includes follower/following counts) ───────────────
   const fetchProfile = useCallback(async () => {
@@ -46,7 +46,7 @@ export const useProfile = (userId) => {
   const enrichWithCounts = async (profileRow) => {
     const [{ count: followers }, { count: following }] = await Promise.all([
       supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', profileRow.id),
-      supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id',  profileRow.id),
+      supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', profileRow.id),
     ]);
     return { ...profileRow, followers: followers ?? 0, following: following ?? 0 };
   };
@@ -60,7 +60,9 @@ export const useProfile = (userId) => {
       .select(`
         id, name, description, tags, is_public,
         screenshot_url, saved_at,
-        upper_template_id, lower_template_id
+        upper_template_id, lower_template_id,
+        dominant_color, garment_type,
+        measurements_snapshot
       `)
       .eq('user_id', userId)
       .order('saved_at', { ascending: false });
@@ -91,7 +93,7 @@ export const useProfile = (userId) => {
           submission_id = sub?.id ?? null;
         }
 
-        return { ...outfit, screenshotSignedUrl, submission_id, dominantColor: null };
+        return { ...outfit, screenshotSignedUrl, submission_id, dominantColor: outfit.dominant_color ?? null };
       })
     );
 
@@ -116,10 +118,10 @@ export const useProfile = (userId) => {
         .from('profiles')
         .update({
           display_name: fields.display_name?.trim() || null,
-          username:     fields.username?.trim().toLowerCase() || null,
-          bio:          fields.bio?.trim()         || null,
-          location:     fields.location?.trim()    || null,
-          website_url:  fields.website_url?.trim() || null,
+          username: fields.username?.trim().toLowerCase() || null,
+          bio: fields.bio?.trim() || null,
+          location: fields.location?.trim() || null,
+          website_url: fields.website_url?.trim() || null,
         })
         .eq('id', userId)
         .select()
@@ -142,7 +144,7 @@ export const useProfile = (userId) => {
     setSaving(true);
     setError(null);
     try {
-      const ext  = file.name.split('.').pop();
+      const ext = file.name.split('.').pop();
       const path = `${userId}/avatar.${ext}`;
       const { error: upErr } = await supabase.storage
         .from('avatars')
@@ -173,7 +175,7 @@ export const useProfile = (userId) => {
     setSaving(true);
     setError(null);
     try {
-      const ext  = file.name.split('.').pop();
+      const ext = file.name.split('.').pop();
       const path = `${userId}/cover.${ext}`;
       const { error: upErr } = await supabase.storage
         .from('avatars')  // reuse avatars bucket; cover images stored in same bucket

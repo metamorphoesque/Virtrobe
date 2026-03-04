@@ -60,6 +60,7 @@ const TryOnPage = ({ onSave, onSaveOutfit, onShare, user, onUserChange, onNaviga
 
   // Save outfit dialog state
   const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [saveDialogPublic, setSaveDialogPublic] = useState(false);
 
   // Garment slots
   const [selectedClothingType, setSelectedClothingType] = React.useState('shirt');
@@ -220,6 +221,7 @@ const TryOnPage = ({ onSave, onSaveOutfit, onShare, user, onUserChange, onNaviga
       return;
     }
     // Open save dialog pre-set to public
+    setSaveDialogPublic(true);
     setShowSaveDialog(true);
   };
 
@@ -311,6 +313,7 @@ const TryOnPage = ({ onSave, onSaveOutfit, onShare, user, onUserChange, onNaviga
                     });
                     return;
                   }
+                  setSaveDialogPublic(false);
                   setShowSaveDialog(true);
                 }}
               />
@@ -328,6 +331,7 @@ const TryOnPage = ({ onSave, onSaveOutfit, onShare, user, onUserChange, onNaviga
             onClose={() => setShowSaveDialog(false)}
             saving={saving}
             error={saveError}
+            defaultPublic={saveDialogPublic}
           />
         )}
 

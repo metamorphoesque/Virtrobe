@@ -1,10 +1,17 @@
 // src/components/ui/PrivateOutfitModal.jsx
-// Detail modal for private outfits (no public submission).
-// Shows screenshot preview, outfit name, description, tags, date, and measurements.
+// Detail modal for saved outfits (private or public without a submission).
+// LEFT: live Three.js scene reconstruction from saved template IDs + measurements.
+//       Falls back to screenshot if no GLB templates found.
+// RIGHT: outfit name, description, tags, date, garment info, and measurements.
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { X, Tag, Ruler, Calendar, Lock, Globe, Loader2 } from 'lucide-react';
+import { Canvas } from '@react-three/fiber';
+import { OrbitControls, Environment, ContactShadows, Grid } from '@react-three/drei';
+import * as THREE from 'three';
 import { supabase } from '../../services/authService';
+import MorphableMannequin from '../3d/MorphableMannequin';
+import PhysicsGarment from '../3d/PhysicsGarment';
 
 const serif = { fontFamily: "'Cormorant Garamond', Georgia, serif" };
 const mono = { fontFamily: "'DM Mono', 'Courier New', monospace" };
@@ -26,16 +33,167 @@ const MeasRow = ({ label, value, unit = 'cm' }) =>
         </div>
     ) : null;
 
+// ---------------------------------------------------------------------------
+// ScreenshotPlane — fallback when no GLB available
+// ---------------------------------------------------------------------------
+const ScreenshotPlane = ({ url }) => {
+    const [tex, setTex] = useState(null);
+    useEffect(() => {
+        if (!url) return;
+        new THREE.TextureLoader().load(url, (t) => {
+            t.colorSpace = THREE.SRGBColorSpace;
+            setTex(t);
+        });
+    }, [url]);
+    if (!tex) return null;
+    return (
+        <mesh position={[0, 1.1, 0]}>
+            <planeGeometry args={[1.35, 1.8]} />
+            <meshBasicMaterial map={tex} transparent side={THREE.DoubleSide} />
+        </mesh>
+    );
+};
+
+// ---------------------------------------------------------------------------
+// Live3DScene — reconstructs the mannequin + garments from saved data
+// ---------------------------------------------------------------------------
+const Live3DScene = ({ measurements, upperTemplate, lowerTemplate, screenshotUrl }) => {
+    const mannequinRef = useRef();
+    const has3D = measurements && (upperTemplate?.modelUrl || lowerTemplate?.modelUrl);
+
+    const upperGarmentData = upperTemplate?.modelUrl ? {
+        id: upperTemplate.id,
+        name: upperTemplate.name,
+        type: upperTemplate.type,
+        modelUrl: upperTemplate.modelUrl,
+        slot: 'upper',
+    } : null;
+
+    const lowerGarmentData = lowerTemplate?.modelUrl ? {
+        id: lowerTemplate.id,
+        name: lowerTemplate.name,
+        type: lowerTemplate.type,
+        modelUrl: lowerTemplate.modelUrl,
+        slot: 'lower',
+    } : null;
+
+    return (
+        <Canvas
+            camera={{ position: [0, 1.2, 3.6], fov: 48 }}
+            shadows
+            gl={{ antialias: true, alpha: false, preserveDrawingBuffer: false }}
+            style={{ background: '#f8f8f8' }}
+            onCreated={({ gl, scene }) => {
+                gl.setClearColor(0xf8f8f8, 1);
+                scene.background = new THREE.Color(0xf8f8f8);
+            }}
+        >
+            <ambientLight intensity={0.9} />
+            <directionalLight position={[4, 6, 4]} intensity={0.6} castShadow />
+            <directionalLight position={[-4, 4, -4]} intensity={0.2} />
+            <Environment preset="studio" background={false} />
+
+            <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+                <planeGeometry args={[20, 20]} />
+                <meshStandardMaterial color="#eeeeee" roughness={0.7} />
+            </mesh>
+
+            <Grid
+                args={[12, 12]} cellSize={0.4} cellThickness={0.18}
+                cellColor="#d4d4d4" sectionColor="#d4d4d4"
+                fadeDistance={7} position={[0, 0.001, 0]}
+            />
+
+            <ContactShadows position={[0, 0.001, 0]} opacity={0.05} scale={5} blur={5} far={2} />
+
+            {has3D ? (
+                <group rotation={[0, Math.PI / 2, 0]}>
+                    <Suspense fallback={null}>
+                        <MorphableMannequin
+                            ref={mannequinRef}
+                            measurements={measurements}
+                            autoRotate={false}
+                            standHeight={((measurements.height_cm ?? 170) / 100) * 0.45 - 0.2}
+                        />
+                    </Suspense>
+
+                    {upperGarmentData && mannequinRef && (
+                        <Suspense fallback={null}>
+                            <PhysicsGarment
+                                key={`upper-priv-${upperGarmentData.id}`}
+                                garmentData={upperGarmentData}
+                                measurements={measurements}
+                                mannequinRef={mannequinRef}
+                                slot="upper"
+                                layer={0}
+                            />
+                        </Suspense>
+                    )}
+
+                    {lowerGarmentData && mannequinRef && (
+                        <Suspense fallback={null}>
+                            <PhysicsGarment
+                                key={`lower-priv-${lowerGarmentData.id}`}
+                                garmentData={lowerGarmentData}
+                                measurements={measurements}
+                                mannequinRef={mannequinRef}
+                                slot="lower"
+                                layer={0}
+                            />
+                        </Suspense>
+                    )}
+                </group>
+            ) : (
+                <ScreenshotPlane url={screenshotUrl} />
+            )}
+
+            <OrbitControls
+                makeDefault target={[0, 1.1, 0]}
+                minDistance={1.8} maxDistance={5}
+                enablePan={false}
+                minPolarAngle={Math.PI / 5} maxPolarAngle={Math.PI / 1.7}
+                autoRotate autoRotateSpeed={0.5}
+            />
+        </Canvas>
+    );
+};
+
+// ---------------------------------------------------------------------------
+// PrivateOutfitModal
+// ---------------------------------------------------------------------------
 const PrivateOutfitModal = ({ outfit, onClose }) => {
     const [loading, setLoading] = useState(true);
     const [screenshotUrl, setScreenshotUrl] = useState(null);
     const [fullOutfit, setFullOutfit] = useState(null);
+    const [upperTemplate, setUpperTemplate] = useState(null);
+    const [lowerTemplate, setLowerTemplate] = useState(null);
 
     useEffect(() => {
         const h = (e) => { if (e.key === 'Escape') onClose?.(); };
         window.addEventListener('keydown', h);
         return () => window.removeEventListener('keydown', h);
     }, [onClose]);
+
+    // Resolve a garment template to get its model URL
+    const resolveTemplate = useCallback(async (templateId) => {
+        if (!templateId) return null;
+        const { data: tmpl, error: tErr } = await supabase
+            .from('garment_templates')
+            .select('id, name, type, model_url, dominant_color')
+            .eq('id', templateId)
+            .single();
+        if (tErr || !tmpl) return null;
+
+        let modelUrl = tmpl.model_url;
+        if (modelUrl && !modelUrl.startsWith('http')) {
+            const { data: signed } = await supabase.storage
+                .from('garment-models')
+                .createSignedUrl(modelUrl, 3600);
+            modelUrl = signed?.signedUrl ?? null;
+        }
+
+        return { ...tmpl, modelUrl };
+    }, []);
 
     useEffect(() => {
         const load = async () => {
@@ -45,11 +203,11 @@ const PrivateOutfitModal = ({ outfit, onClose }) => {
                 const { data, error } = await supabase
                     .from('outfits')
                     .select(`
-            id, name, description, tags, is_public,
-            screenshot_url, saved_at, garment_type,
-            dominant_color, measurements_snapshot,
-            upper_template_id, lower_template_id
-          `)
+                        id, name, description, tags, is_public,
+                        screenshot_url, saved_at, garment_type,
+                        dominant_color, measurements_snapshot,
+                        upper_template_id, lower_template_id
+                    `)
                     .eq('id', outfit.id)
                     .single();
 
@@ -66,17 +224,17 @@ const PrivateOutfitModal = ({ outfit, onClose }) => {
                     setScreenshotUrl(outfit.screenshotSignedUrl);
                 }
 
-                // Resolve template names
-                if (data.upper_template_id) {
-                    const { data: t } = await supabase
-                        .from('garment_templates').select('name, type').eq('id', data.upper_template_id).single();
-                    if (t) setFullOutfit(prev => ({ ...prev, upperTemplateName: t.name, upperTemplateType: t.type }));
-                }
-                if (data.lower_template_id) {
-                    const { data: t } = await supabase
-                        .from('garment_templates').select('name, type').eq('id', data.lower_template_id).single();
-                    if (t) setFullOutfit(prev => ({ ...prev, lowerTemplateName: t.name, lowerTemplateType: t.type }));
-                }
+                // Resolve garment templates in parallel for 3D reconstruction
+                const [upper, lower] = await Promise.all([
+                    resolveTemplate(data.upper_template_id),
+                    resolveTemplate(data.lower_template_id),
+                ]);
+                setUpperTemplate(upper);
+                setLowerTemplate(lower);
+
+                // Also store template names on fullOutfit for display
+                if (upper) setFullOutfit(prev => ({ ...prev, upperTemplateName: upper.name, upperTemplateType: upper.type }));
+                if (lower) setFullOutfit(prev => ({ ...prev, lowerTemplateName: lower.name, lowerTemplateType: lower.type }));
             } catch (err) {
                 console.error('Failed to load outfit:', err);
             } finally {
@@ -84,60 +242,85 @@ const PrivateOutfitModal = ({ outfit, onClose }) => {
             }
         };
         load();
-    }, [outfit.id]);
+    }, [outfit.id, resolveTemplate]);
 
     const meas = fullOutfit?.measurements_snapshot ?? null;
     const src = screenshotUrl ?? outfit.screenshotSignedUrl;
 
     return (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 md:p-6">
+        <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 md:p-6">
             <div className="absolute inset-0 bg-black/55 backdrop-blur-md" onClick={onClose} />
 
-            <div className="relative z-10 w-full max-w-2xl max-h-[85vh] bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col">
+            <div className="relative z-10 w-full max-w-5xl h-[85vh] max-h-[750px] bg-white rounded-3xl overflow-hidden shadow-2xl flex">
 
-                {/* Header */}
-                <div className="flex items-center justify-between px-7 pt-6 pb-4 border-b border-black/6 flex-shrink-0">
-                    <div>
-                        <p className="text-[9px] text-black/25 uppercase tracking-[0.3em] mb-1" style={serif}>
-                            Saved outfit
-                        </p>
-                        <h2 className="text-xl font-light text-black" style={serif}>
-                            {loading ? '...' : (fullOutfit?.name ?? outfit.name ?? 'Untitled Look')}
-                        </h2>
-                    </div>
-                    <button onClick={onClose} className="p-2 rounded-xl text-black/20 hover:text-black hover:bg-black/5 transition-colors">
-                        <X className="w-4 h-4" />
-                    </button>
-                </div>
-
-                {/* Content */}
-                <div className="flex-1 overflow-y-auto">
+                {/* ══ LEFT: 3D scene (55%) ══ */}
+                <div className="relative w-[55%] flex-shrink-0 bg-[#f8f8f8]">
                     {loading ? (
-                        <div className="flex items-center justify-center py-20">
-                            <Loader2 className="w-6 h-6 text-black/20 animate-spin" />
+                        <div className="w-full h-full flex items-center justify-center">
+                            <div className="w-6 h-6 border-2 border-black/10 border-t-black/40 rounded-full animate-spin" />
                         </div>
                     ) : (
-                        <div className="flex flex-col md:flex-row">
-                            {/* Screenshot */}
-                            <div className="md:w-1/2 flex-shrink-0 bg-[#f8f8f8] flex items-center justify-center p-6">
-                                {src ? (
-                                    <img
-                                        src={src}
-                                        alt={fullOutfit?.name ?? 'Outfit'}
-                                        className="w-full max-h-[400px] object-contain rounded-xl shadow-sm"
-                                    />
-                                ) : (
-                                    <div className="w-full aspect-[3/4] bg-black/[0.04] rounded-xl flex items-center justify-center">
-                                        <svg viewBox="0 0 60 100" className="w-16 opacity-15" fill="currentColor">
-                                            <circle cx="30" cy="14" r="10" />
-                                            <path d="M14 30 Q14 24 30 24 Q46 24 46 30 L50 70 Q50 72 48 72 L38 72 L36 100 L24 100 L22 72 L12 72 Q10 72 10 70 Z" />
-                                        </svg>
-                                    </div>
-                                )}
-                            </div>
+                        <Live3DScene
+                            measurements={meas}
+                            upperTemplate={upperTemplate}
+                            lowerTemplate={lowerTemplate}
+                            screenshotUrl={src}
+                        />
+                    )}
 
-                            {/* Details */}
-                            <div className="md:w-1/2 px-7 py-6 flex flex-col gap-5">
+                    {/* Garment name badges — bottom left */}
+                    {!loading && (upperTemplate || lowerTemplate) && (
+                        <div className="absolute bottom-5 left-5 flex flex-col gap-1.5 pointer-events-none">
+                            {upperTemplate && (
+                                <div className="bg-white/80 backdrop-blur-sm px-2.5 py-1 rounded-xl border border-black/8">
+                                    <span className="text-[9px] text-black/50 uppercase tracking-wide">Upper · </span>
+                                    <span className="text-[10px] text-black font-medium">{upperTemplate.name}</span>
+                                </div>
+                            )}
+                            {lowerTemplate && (
+                                <div className="bg-white/80 backdrop-blur-sm px-2.5 py-1 rounded-xl border border-black/8">
+                                    <span className="text-[9px] text-black/50 uppercase tracking-wide">Lower · </span>
+                                    <span className="text-[10px] text-black font-medium">{lowerTemplate.name}</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Orbit hint */}
+                    <div className="absolute top-4 left-4 bg-white/80 backdrop-blur-sm px-2.5 py-1 rounded-xl border border-black/8">
+                        <span className="text-[9px] text-black/35 tracking-wide">Drag to orbit</span>
+                    </div>
+                </div>
+
+                {/* Divider */}
+                <div className="w-px bg-black/6 flex-shrink-0" />
+
+                {/* ══ RIGHT: details (45%) ══ */}
+                <div className="flex-1 flex flex-col min-h-0 min-w-0">
+
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-7 pt-6 pb-4 border-b border-black/6 flex-shrink-0">
+                        <div>
+                            <p className="text-[9px] text-black/25 uppercase tracking-[0.3em] mb-1" style={serif}>
+                                Saved outfit
+                            </p>
+                            <h2 className="text-xl font-light text-black" style={serif}>
+                                {loading ? '...' : (fullOutfit?.name ?? outfit.name ?? 'Untitled Look')}
+                            </h2>
+                        </div>
+                        <button onClick={onClose} className="p-2 rounded-xl text-black/20 hover:text-black hover:bg-black/5 transition-colors">
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
+
+                    {/* Scrollable content */}
+                    <div className="flex-1 overflow-y-auto px-7 py-6">
+                        {loading ? (
+                            <div className="flex items-center justify-center py-20">
+                                <Loader2 className="w-6 h-6 text-black/20 animate-spin" />
+                            </div>
+                        ) : (
+                            <div className="flex flex-col gap-5">
 
                                 {/* Meta row */}
                                 <div className="flex items-center gap-3 text-[10px] text-black/35">
@@ -205,8 +388,8 @@ const PrivateOutfitModal = ({ outfit, onClose }) => {
                                     </div>
                                 )}
                             </div>
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
             </div>
         </div>

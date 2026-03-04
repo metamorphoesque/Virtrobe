@@ -94,8 +94,16 @@ export const useSaveOutfit = (user) => {
         });
 
         if (!resp.ok) {
-          const body = await resp.json().catch(() => ({}));
-          throw new Error(body.error || `Server error ${resp.status}`);
+          let errMsg = `Server error ${resp.status}`;
+          try {
+            const body = await resp.json();
+            errMsg = body.error || errMsg;
+          } catch {
+            // Response wasn't JSON — could be HTML error page or payload-too-large
+            if (resp.status === 413) errMsg = 'Screenshot too large — try a smaller canvas';
+            else if (resp.status === 404) errMsg = 'Save endpoint not found — is the server running?';
+          }
+          throw new Error(errMsg);
         }
 
         // Server returns: { outfitId, name, savedAt, isPublic, submissionId, screenshotSignedUrl }

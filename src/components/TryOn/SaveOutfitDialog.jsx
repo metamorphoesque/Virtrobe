@@ -7,12 +7,12 @@ import { X, Globe, Lock, Tag, Plus, Loader2 } from 'lucide-react';
 
 const serif = { fontFamily: "'Cormorant Garamond', Georgia, serif" };
 
-const SaveOutfitDialog = ({ onSave, onClose, saving, error }) => {
-  const [name, setName]           = useState('');
-  const [description, setDesc]    = useState('');
-  const [tagInput, setTagInput]   = useState('');
-  const [tags, setTags]           = useState([]);
-  const [isPublic, setIsPublic]   = useState(false);
+const SaveOutfitDialog = ({ onSave, onClose, saving, error, defaultPublic = false }) => {
+  const [name, setName] = useState('');
+  const [description, setDesc] = useState('');
+  const [tagInput, setTagInput] = useState('');
+  const [tags, setTags] = useState([]);
+  const [isPublic, setIsPublic] = useState(defaultPublic);
   const nameRef = useRef(null);
 
   useEffect(() => { nameRef.current?.focus(); }, []);
@@ -59,7 +59,7 @@ const SaveOutfitDialog = ({ onSave, onClose, saving, error }) => {
         <div className="flex items-center justify-between px-7 pt-7 pb-5 border-b border-black/6">
           <div>
             <p className="text-[9px] text-black/25 uppercase tracking-[0.3em] mb-1" style={serif}>
-              Save look
+              {defaultPublic ? 'Post to moodboard' : 'Save look'}
             </p>
             <h2 className="text-2xl font-light text-black" style={serif}>
               Name your outfit
@@ -158,18 +158,17 @@ const SaveOutfitDialog = ({ onSave, onClose, saving, error }) => {
             <span className="text-[10px] text-black/40 uppercase tracking-[0.15em]" style={serif}>Visibility</span>
             <div className="flex items-center gap-2 bg-black/[0.04] rounded-xl p-1 ml-auto">
               {[
-                { val: false, icon: Lock,   label: 'Private' },
-                { val: true,  icon: Globe,  label: 'Public'  },
+                { val: false, icon: Lock, label: 'Private' },
+                { val: true, icon: Globe, label: 'Public' },
               ].map(({ val, icon: Icon, label }) => (
                 <button
                   key={label}
                   type="button"
                   onClick={() => setIsPublic(val)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-medium transition-all ${
-                    isPublic === val
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-medium transition-all ${isPublic === val
                       ? 'bg-black text-white shadow-sm'
                       : 'text-black/35 hover:text-black/70'
-                  }`}
+                    }`}
                 >
                   <Icon className="w-3 h-3" />
                   {label}
@@ -181,6 +180,7 @@ const SaveOutfitDialog = ({ onSave, onClose, saving, error }) => {
           {isPublic && (
             <p className="text-[10px] text-black/30 leading-relaxed -mt-1" style={serif}>
               This outfit will appear on the public Moodboards feed and can be liked and commented on.
+              It will also be visible on your profile's saved looks archive.
             </p>
           )}
 

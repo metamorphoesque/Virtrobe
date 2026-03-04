@@ -49,8 +49,8 @@ const generateLimiter = rateLimit({
 app.use('/api/', generalLimiter);
 
 // ── Body Parsing ──────────────────────────────────────────────────────
-app.use(express.json({ limit: '5mb' }));
-app.use(express.urlencoded({ extended: true, limit: '5mb' }));
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 // ── Dev Auth Middleware ───────────────────────────────────────────────
 // Must run before API routes so dev tokens are recognized by requireAuth.

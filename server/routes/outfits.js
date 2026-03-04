@@ -154,4 +154,43 @@ router.get('/mine', authenticate, async (req, res) => {
   res.json({ outfits: data });
 });
 
+// ---------------------------------------------------------------------------
+// GET /api/outfits/:id
+// Returns a single outfit by ID (only if owned by the authenticated user)
+// ---------------------------------------------------------------------------
+router.get('/:id', authenticate, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('outfits')
+      .select(`
+        id, name, description, tags, is_public, saved_at,
+        screenshot_url, garment_type, dominant_color,
+        measurements_snapshot,
+        upper_template_id, lower_template_id
+      `)
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return res.status(404).json({ error: 'Outfit not found' });
+      throw error;
+    }
+
+    // Generate signed screenshot URL if available
+    let screenshotSignedUrl = null;
+    if (data.screenshot_url) {
+      const { data: signed } = await supabase.storage
+        .from('moodboard-screenshots')
+        .createSignedUrl(data.screenshot_url, 3600);
+      screenshotSignedUrl = signed?.signedUrl ?? null;
+    }
+
+    res.json({ outfit: { ...data, screenshotSignedUrl } });
+  } catch (err) {
+    console.error('Get outfit error:', err);
+    res.status(500).json({ error: err.message || 'Failed to get outfit' });
+  }
+});
+
 module.exports = router;
