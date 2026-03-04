@@ -15,8 +15,9 @@ const PORT = process.env.PORT || 5000;
 
 // ── Security Headers ──────────────────────────────────────────────────
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' },  // allow model loading
-  crossOriginEmbedderPolicy: false,  // needed for Three.js assets
+  contentSecurityPolicy: false,                        // ← disabled for dev (Three.js/WebGL needs this)
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  crossOriginEmbedderPolicy: false,
 }));
 
 // ── CORS ──────────────────────────────────────────────────────────────
@@ -28,7 +29,6 @@ app.use(cors({
 }));
 
 // ── Rate Limiting ─────────────────────────────────────────────────────
-// General rate limit: 100 requests per 15 minutes per IP
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
@@ -37,7 +37,6 @@ const generalLimiter = rateLimit({
   message: { error: 'Too many requests, please try again later.' },
 });
 
-// Strict rate limit for generation endpoints: 10 per minute per IP
 const generateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
@@ -53,8 +52,6 @@ app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 // ── Dev Auth Middleware ───────────────────────────────────────────────
-// Must run before API routes so dev tokens are recognized by requireAuth.
-// No-op in production or when DEV_ACCESS_KEY is not set.
 app.use(devTokenMiddleware);
 app.use('/api/outfits', outfitsRouter);
 
@@ -82,16 +79,12 @@ app.get('/api/health', (req, res) => {
 // ── Global error handler ──────────────────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('Server error:', err);
-
-  // Don't leak stack traces in production
   const message = process.env.NODE_ENV === 'production'
     ? 'Internal server error'
     : err.message || 'Internal server error';
-
   res.status(500).json({ error: message });
 });
 
-// Export the generateLimiter for use in routes
 app.locals.generateLimiter = generateLimiter;
 
 app.listen(PORT, () => {

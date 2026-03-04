@@ -71,11 +71,9 @@ const authService = {
       .from('profiles')
       .select('*')
       .eq('id', userId)
-      .single();
-    if (error) {
-      if (error.code === 'PGRST116') return null;
-      throw error;
-    }
+      .maybeSingle();   // ← was .single(), which throws a 406 if no row exists yet
+                        //   maybeSingle() returns null instead — no error
+    if (error) throw error;
     return data;
   },
 
