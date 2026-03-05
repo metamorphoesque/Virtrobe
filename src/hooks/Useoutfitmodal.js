@@ -1,16 +1,11 @@
 // src/hooks/useOutfitModal.js
-// Fetches everything needed for the OutfitModal:
-//   - submission + outfit + submitter profile
-//   - upper/lower garment template data (name, modelUrl) for 3D reconstruction
-//   - signed screenshot URL as fallback
-//   - comments + likes with realtime
-
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { STORAGE_BUCKET } from '../lib/supabase'; // ← use the same bucket constant as garmentTemplateService
 
 export const useOutfitModal = (submissionId, currentUserId) => {
   const [submission, setSubmission] = useState(null);
-  const [upperTemplate, setUpperTemplate] = useState(null); // { id, name, modelUrl, type }
+  const [upperTemplate, setUpperTemplate] = useState(null);
   const [lowerTemplate, setLowerTemplate] = useState(null);
   const [comments, setComments] = useState([]);
   const [liked, setLiked] = useState(false);
@@ -18,21 +13,19 @@ export const useOutfitModal = (submissionId, currentUserId) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  //── Resolve a garment templates model URL from storage ─────────────────
   const resolveTemplateUrl = useCallback(async (templateId) => {
     if (!templateId) return null;
     const { data: tmpl, error: tErr } = await supabase
       .from('garment_templates')
-      .select('id, name, type, model_url, dominant_color')
+      .select('id, name, type, glb_path, dominant_color') 
       .eq('id', templateId)
-      .single();
+      .maybeSingle();                              
     if (tErr || !tmpl) return null;
 
-    // model_url may be a storage path — resolve to signed URL
-    let modelUrl = tmpl.model_url;
+    let modelUrl = tmpl.glb_path;                        
     if (modelUrl && !modelUrl.startsWith('http')) {
       const { data: signed } = await supabase.storage
-        .from('garment-models')
+        .from(STORAGE_BUCKET)                           
         .createSignedUrl(modelUrl, 3600);
       modelUrl = signed?.signedUrl ?? null;
     }
@@ -40,38 +33,22 @@ export const useOutfitModal = (submissionId, currentUserId) => {
     return { ...tmpl, modelUrl };
   }, []);
 
-  // ── Fetch main submission data ───────────────────────────────────────────
   const fetchSubmission = useCallback(async () => {
     if (!submissionId) return;
     setLoading(true);
     setError(null);
-
     try {
       const { data, error: err } = await supabase
         .from('public_submissions')
         .select(`
-          id,
-          submitted_at,
+          id, submitted_at,
           outfit:outfits (
-            id,
-            name,
-            description,
-            tags,
-            is_public,
-            screenshot_url,
-            dominant_color,
-            garment_type,
-            measurements_snapshot,
-            upper_template_id,
-            lower_template_id,
-            saved_at
+            id, name, description, tags, is_public,
+            screenshot_url, dominant_color, garment_type,
+            measurements_snapshot, upper_template_id, lower_template_id, saved_at
           ),
           submitter:profiles!submitted_by (
-            id,
-            username,
-            display_name,
-            avatar_url,
-            bio
+            id, username, display_name, avatar_url, bio
           )
         `)
         .eq('id', submissionId)
@@ -79,7 +56,6 @@ export const useOutfitModal = (submissionId, currentUserId) => {
 
       if (err) throw err;
 
-      // Signed screenshot URL
       let screenshotSignedUrl = null;
       if (data.outfit?.screenshot_url) {
         const { data: signed } = await supabase.storage
@@ -90,7 +66,6 @@ export const useOutfitModal = (submissionId, currentUserId) => {
 
       setSubmission({ ...data, outfit: { ...data.outfit, screenshotSignedUrl } });
 
-      // Resolve garment templates in parallel for 3D reconstruction
       const [upper, lower] = await Promise.all([
         resolveTemplateUrl(data.outfit?.upper_template_id),
         resolveTemplateUrl(data.outfit?.lower_template_id),
@@ -105,7 +80,6 @@ export const useOutfitModal = (submissionId, currentUserId) => {
     }
   }, [submissionId, resolveTemplateUrl]);
 
-  // ── Fetch comments ───────────────────────────────────────────────────────
   const fetchComments = useCallback(async () => {
     if (!submissionId) return;
     const { data } = await supabase
@@ -116,7 +90,6 @@ export const useOutfitModal = (submissionId, currentUserId) => {
     setComments(data ?? []);
   }, [submissionId]);
 
-  // ── Fetch likes ──────────────────────────────────────────────────────────
   const fetchLikes = useCallback(async () => {
     if (!submissionId) return;
     const { count } = await supabase
@@ -136,7 +109,6 @@ export const useOutfitModal = (submissionId, currentUserId) => {
     }
   }, [submissionId, currentUserId]);
 
-  // ── Initial load ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!submissionId) return;
     fetchSubmission();
@@ -144,7 +116,6 @@ export const useOutfitModal = (submissionId, currentUserId) => {
     fetchLikes();
   }, [submissionId, fetchSubmission, fetchComments, fetchLikes]);
 
-  // ── Realtime comments ────────────────────────────────────────────────────
   useEffect(() => {
     if (!submissionId) return;
     const channel = supabase
@@ -163,7 +134,6 @@ export const useOutfitModal = (submissionId, currentUserId) => {
     return () => supabase.removeChannel(channel);
   }, [submissionId]);
 
-  // ── Toggle like ──────────────────────────────────────────────────────────
   const toggleLike = useCallback(async () => {
     if (!currentUserId) return;
     const next = !liked;
@@ -179,7 +149,6 @@ export const useOutfitModal = (submissionId, currentUserId) => {
     }
   }, [liked, submissionId, currentUserId]);
 
-  // ── Post comment ─────────────────────────────────────────────────────────
   const postComment = useCallback(async (text) => {
     if (!currentUserId || !text?.trim()) return null;
     const optimistic = { id: `opt-${Date.now()}`, content: text.trim(), created_at: new Date().toISOString(), author: null };
@@ -194,7 +163,6 @@ export const useOutfitModal = (submissionId, currentUserId) => {
     return data;
   }, [submissionId, currentUserId]);
 
-  // ── Delete comment ───────────────────────────────────────────────────────
   const deleteComment = useCallback(async (commentId) => {
     setComments((prev) => prev.filter((c) => c.id !== commentId));
     const { error } = await supabase.from('outfit_comments').delete().eq('id', commentId);
@@ -202,17 +170,8 @@ export const useOutfitModal = (submissionId, currentUserId) => {
   }, [fetchComments]);
 
   return {
-    submission,
-    upperTemplate,    // { id, name, type, modelUrl, dominant_color } | null
-    lowerTemplate,    // { id, name, type, modelUrl, dominant_color } | null
-    comments,
-    liked,
-    likeCount,
-    loading,
-    error,
-    toggleLike,
-    postComment,
-    deleteComment,
-    refetch: fetchSubmission,
+    submission, upperTemplate, lowerTemplate,
+    comments, liked, likeCount, loading, error,
+    toggleLike, postComment, deleteComment, refetch: fetchSubmission,
   };
 };

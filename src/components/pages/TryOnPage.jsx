@@ -1,5 +1,5 @@
 // src/components/pages/TryOnPage.jsx
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import Scene from '../3d/Scene';
 import GenderSelector from '../TryOn/GenderSelector';
 import ClothingSidebar from '../TryOn/ClothingSidebar';
@@ -16,58 +16,50 @@ import garmentTemplateService from '../../services/garmentTemplateService';
 import { useSaveOutfit } from '../../hooks/useSaveOutfit';
 import SaveOutfitDialog from '../TryOn/SaveOutfitDialog';
 
-// ---------------------------------------------------------------------------
-// Slot routing
-// ---------------------------------------------------------------------------
 const UPPER_SLOT = 'upper';
 const LOWER_SLOT = 'lower';
-const LOWER_TYPES = new Set([
-  'pants', 'skirt', 'shorts', 'trousers', 'jeans', 'leggings',
-]);
-const slotForType = (type) =>
-  LOWER_TYPES.has(type?.toLowerCase()) ? LOWER_SLOT : UPPER_SLOT;
+const LOWER_TYPES = new Set(['pants','skirt','shorts','trousers','jeans','leggings']);
+const slotForType = (type) => LOWER_TYPES.has(type?.toLowerCase()) ? LOWER_SLOT : UPPER_SLOT;
 
-// ---------------------------------------------------------------------------
-// Auth modal — full-screen overlay on top of TryOnPage
-// ---------------------------------------------------------------------------
 const AuthModal = ({ onClose, onAuthSuccess }) => (
   <div className="fixed inset-0 z-[200] flex items-center justify-center">
-    {/* Backdrop */}
-    <div
-      className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-      onClick={onClose}
-    />
-    {/* Panel — wide, 16/9-ish */}
+    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
     <div className="relative z-10 w-full max-w-5xl h-[90vh] max-h-[620px] rounded-2xl overflow-hidden shadow-2xl">
-      <AuthPage
-        onAuthSuccess={(user) => {
-          onAuthSuccess(user);
-          onClose();
-        }}
-      />
+      <AuthPage onAuthSuccess={(user) => { onAuthSuccess(user); onClose(); }} />
     </div>
   </div>
 );
 
 // ---------------------------------------------------------------------------
-// TryOnPage
+// Flash overlay — white flash effect on screenshot
 // ---------------------------------------------------------------------------
-const TryOnPage = ({ onSave, onSaveOutfit, onShare, user, onUserChange, onNavigate }) => {
+const FlashOverlay = ({ flashing }) => (
+  <div
+    className="absolute inset-0 z-50 pointer-events-none transition-opacity duration-300"
+    style={{ background: 'white', opacity: flashing ? 0.85 : 0 }}
+  />
+);
+
+const TryOnPage = ({ user, onUserChange, onNavigate }) => {
   const isLoggedIn = !!user;
 
-  // Auth modal state
-  const [showAuthModal, setShowAuthModal] = React.useState(false);
-
-  // Save outfit dialog state
+  const [showAuthModal, setShowAuthModal] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveDialogPublic, setSaveDialogPublic] = useState(false);
+  const [pendingScreenshot, setPendingScreenshot] = useState(null);
+  const [flashing, setFlashing] = useState(false);
 
-  // Garment slots
-  const [selectedClothingType, setSelectedClothingType] = React.useState('shirt');
-  const [upperGarment, setUpperGarment] = React.useState(null);
-  const [lowerGarment, setLowerGarment] = React.useState(null);
-  const [upperTemplateId, setUpperTemplateId] = React.useState(null);
-  const [lowerTemplateId, setLowerTemplateId] = React.useState(null);
+  // View angle: 'front' | 'side' | 'back'
+  const [activeView, setActiveView] = useState('front');
+
+  const [selectedClothingType, setSelectedClothingType] = useState('shirt');
+  const [upperGarment, setUpperGarment] = useState(null);
+  const [lowerGarment, setLowerGarment] = useState(null);
+  const [upperTemplateId, setUpperTemplateId] = useState(null);
+  const [lowerTemplateId, setLowerTemplateId] = useState(null);
+
+  // Ref to Scene's imperative API (capture + flyToFront)
+  const sceneRef = useRef();
 
   const bodyMeasurements = useBodyMeasurements();
   const garmentUpload = useGarmentUpload(bodyMeasurements.measurements);
@@ -79,20 +71,14 @@ const TryOnPage = ({ onSave, onSaveOutfit, onShare, user, onUserChange, onNaviga
   const mannequinSelected = !!bodyMeasurements.gender;
 
   React.useEffect(() => {
-    return () => {
-      garmentUpload.clearGarment();
-      if (window.gc) window.gc();
-    };
+    return () => { garmentUpload.clearGarment(); if (window.gc) window.gc(); };
   }, []);
 
   React.useEffect(() => {
     if (garmentUpload.garmentData) {
-      const slot = slotForType(selectedClothingType);
-      _setGarmentForSlot(slot, garmentUpload.garmentData);
+      _setGarmentForSlot(slotForType(selectedClothingType), garmentUpload.garmentData);
     }
   }, [garmentUpload.garmentData]);
-
-  // ── Slot helpers ────────────────────────────────────────────────────────────
 
   const _setGarmentForSlot = (slot, garmentData, templateId = null) => {
     if (slot === UPPER_SLOT) {
@@ -105,21 +91,13 @@ const TryOnPage = ({ onSave, onSaveOutfit, onShare, user, onUserChange, onNaviga
   };
 
   const clearSlot = (slot) => _setGarmentForSlot(slot, null);
-
   const clearAllGarments = () => {
-    setUpperGarment(null);
-    setLowerGarment(null);
-    setUpperTemplateId(null);
-    setLowerTemplateId(null);
+    setUpperGarment(null); setLowerGarment(null);
+    setUpperTemplateId(null); setLowerTemplateId(null);
     garmentUpload.clearGarment();
   };
 
-  const handleReset = () => {
-    bodyMeasurements.setGender(null);
-    clearAllGarments();
-  };
-
-  // ── Garment selection ───────────────────────────────────────────────────────
+  const handleReset = () => { bodyMeasurements.setGender(null); clearAllGarments(); };
 
   const handleSelectTemplate = async (templateId, garmentType) => {
     try {
@@ -134,112 +112,104 @@ const TryOnPage = ({ onSave, onSaveOutfit, onShare, user, onUserChange, onNaviga
     }
   };
 
-  const handleImageUpload = (event) => {
-    garmentUpload.handleImageUpload(event, selectedClothingType);
-  };
+  const handleImageUpload = (e) => garmentUpload.handleImageUpload(e, selectedClothingType);
 
-  // ── Actions ─────────────────────────────────────────────────────────────────
+  // ---------------------------------------------------------------------------
+  // Screenshot flow:
+  //   1. Fly camera to front
+  //   2. Flash
+  //   3. Capture PNG
+  //   4. Open dialog with screenshot pre-captured
+  // ---------------------------------------------------------------------------
+  const triggerScreenshotAndOpen = useCallback((isPublic) => {
+    if (!sceneRef.current) {
+      // No scene ref — open dialog without screenshot
+      setPendingScreenshot(null);
+      setSaveDialogPublic(isPublic);
+      setShowSaveDialog(true);
+      return;
+    }
 
-  const captureScreenshot = () => {
-    const canvas = document.querySelector('canvas');
-    return canvas ? canvas.toDataURL('image/jpeg', 0.9) : null;
-  };
+    // Fly to front-facing position first
+    sceneRef.current.flyToFront(() => {
+      // Flash effect
+      setFlashing(true);
+      setTimeout(() => setFlashing(false), 300);
 
-  // ── Save outfit (private or public) ─────────────────────────────────────────
+      // Capture
+      const base64 = sceneRef.current.capture();
+      sceneRef.current.enableOrbit();
+
+      setPendingScreenshot(base64 ?? null);
+      setSaveDialogPublic(isPublic);
+      setShowSaveDialog(true);
+    });
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Save outfit
+  // ---------------------------------------------------------------------------
   const handleSaveOutfit = async ({ name, description, tags, isPublic }) => {
     try {
-      const canvasEl = document.querySelector('canvas');
-
-      // Determine garment type based on what's equipped
       let garmentType = null;
       if (upperGarment && lowerGarment) garmentType = 'full-outfit';
       else if (upperGarment) garmentType = upperGarment.type ?? selectedClothingType;
       else if (lowerGarment) garmentType = lowerGarment.type ?? selectedClothingType;
 
-      // Extract dominant color from garment data if available
       const dominantColor = upperGarment?.dominantColor ?? lowerGarment?.dominantColor ?? null;
 
       const result = await saveOutfit({
-        name,
-        description,
-        tags,
-        isPublic,
+        name, description, tags, isPublic,
         measurements: bodyMeasurements.measurements,
         upperTemplateId: upperTemplateId ?? null,
         lowerTemplateId: lowerTemplateId ?? null,
-        canvasEl,
+        canvasEl: null,                    // screenshot already captured below
+        screenshotBase64: pendingScreenshot, // pre-captured by triggerScreenshotAndOpen
         dominantColor,
         garmentType,
       });
 
       setShowSaveDialog(false);
+      setPendingScreenshot(null);
 
-      // Show rich notification based on save type
-      if (isPublic) {
-        notification.show({
-          message: `"${name}" saved & posted on Virtrobe!`,
-          type: 'posted',
-          duration: 5000,
-          action: onNavigate ? {
-            label: 'View in Profile',
-            onClick: () => onNavigate('profile'),
-          } : null,
-        });
-      } else {
-        notification.show({
-          message: `"${name}" saved to your profile`,
-          type: 'success',
-          duration: 4000,
-          action: onNavigate ? {
-            label: 'View in Profile',
-            onClick: () => onNavigate('profile'),
-          } : null,
-        });
-      }
+      notification.show({
+        message: isPublic ? `"${name}" saved & posted on Virtrobe!` : `"${name}" saved to your profile`,
+        type: isPublic ? 'posted' : 'success',
+        duration: isPublic ? 5000 : 4000,
+        action: onNavigate ? { label: 'View in Profile', onClick: () => onNavigate('profile') } : null,
+      });
 
       return result;
     } catch (err) {
-      // Show error notification
-      notification.show({
-        message: `Save failed: ${err.message}`,
-        type: 'error',
-        duration: 6000,
-      });
+      notification.show({ message: `Save failed: ${err.message}`, type: 'error', duration: 6000 });
       console.error('Save failed:', err);
     }
   };
 
-  // ── Post outfit (save as public) ────────────────────────────────────────────
   const handlePost = () => {
     if (!isLoggedIn) { setShowAuthModal(true); return; }
     if (!hasAnyGarment) {
-      notification.show({
-        message: 'Add a garment before posting',
-        type: 'info',
-        duration: 3000,
-      });
+      notification.show({ message: 'Add a garment before posting', type: 'info', duration: 3000 });
       return;
     }
-    // Open save dialog pre-set to public
-    setSaveDialogPublic(true);
-    setShowSaveDialog(true);
+    triggerScreenshotAndOpen(true);
   };
 
-  // Called when auth completes inside the modal
-  const handleAuthSuccess = (user) => {
-    onUserChange?.(user);
+  const handleSave = () => {
+    if (!isLoggedIn) { setShowAuthModal(true); return; }
+    if (!hasAnyGarment) {
+      notification.show({ message: 'Add a garment before saving', type: 'info', duration: 3000 });
+      return;
+    }
+    triggerScreenshotAndOpen(false);
   };
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  const handleAuthSuccess = (user) => onUserChange?.(user);
 
   return (
     <>
-      {/* Auth modal — mounts on top of everything */}
       {showAuthModal && (
-        <AuthModal
-          onClose={() => setShowAuthModal(false)}
-          onAuthSuccess={handleAuthSuccess}
-        />
+        <AuthModal onClose={() => setShowAuthModal(false)} onAuthSuccess={handleAuthSuccess} />
       )}
 
       <div className="w-full h-[calc(100vh-12rem)] flex bg-white overflow-hidden">
@@ -250,8 +220,6 @@ const TryOnPage = ({ onSave, onSaveOutfit, onShare, user, onUserChange, onNaviga
         />
 
         <div className="flex gap-4 flex-1 overflow-hidden">
-
-          {/* Clothing sidebar */}
           <ClothingSidebar
             selectedType={selectedClothingType}
             onSelectType={setSelectedClothingType}
@@ -262,9 +230,7 @@ const TryOnPage = ({ onSave, onSaveOutfit, onShare, user, onUserChange, onNaviga
             selectedTemplateId={upperTemplateId ?? lowerTemplateId}
           />
 
-          {/* Centre column */}
           <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-
             {/* 3D Viewport */}
             <div
               className="relative bg-gray-50 w-full border border-black/10 flex-shrink-0"
@@ -277,13 +243,19 @@ const TryOnPage = ({ onSave, onSaveOutfit, onShare, user, onUserChange, onNaviga
                 />
               )}
 
+              {/* Flash overlay */}
+              <FlashOverlay flashing={flashing} />
+
+              {/* Scene — ref gives us capture() + flyToFront() */}
               <Scene
+                ref={sceneRef}
                 measurements={bodyMeasurements.measurements}
                 upperGarmentData={upperGarment}
                 lowerGarmentData={lowerGarment}
                 showGarment={hasAnyGarment}
                 autoRotate={!hasAnyGarment}
                 mannequinRef={bodyMeasurements.mannequinRef ?? undefined}
+                viewAngle={activeView}
               />
 
               <SceneOverlay
@@ -303,43 +275,28 @@ const TryOnPage = ({ onSave, onSaveOutfit, onShare, user, onUserChange, onNaviga
                 isLoggedIn={isLoggedIn}
                 mannequinSelected={mannequinSelected}
                 onOpenAuth={() => setShowAuthModal(true)}
-                onSave={() => {
-                  if (!isLoggedIn) { setShowAuthModal(true); return; }
-                  if (!hasAnyGarment) {
-                    notification.show({
-                      message: 'Add a garment before saving',
-                      type: 'info',
-                      duration: 3000,
-                    });
-                    return;
-                  }
-                  setSaveDialogPublic(false);
-                  setShowSaveDialog(true);
-                }}
+                onSave={handleSave}
+                activeView={activeView}
+                onViewChange={setActiveView}
               />
             </div>
 
-            {/* Similar looks */}
             <SimilarLooksRow visible={mannequinSelected} />
           </div>
         </div>
 
-        {/* Save Outfit Dialog */}
         {showSaveDialog && (
           <SaveOutfitDialog
             onSave={handleSaveOutfit}
-            onClose={() => setShowSaveDialog(false)}
+            onClose={() => { setShowSaveDialog(false); setPendingScreenshot(null); }}
             saving={saving}
             error={saveError}
             defaultPublic={saveDialogPublic}
+            screenshotPreview={pendingScreenshot} // pass to dialog to show a preview thumbnail
           />
         )}
 
-        {/* Measurement panel */}
-        <MeasurementPanel
-          bodyMeasurements={bodyMeasurements}
-          unitConversion={unitConversion}
-        />
+        <MeasurementPanel bodyMeasurements={bodyMeasurements} unitConversion={unitConversion} />
       </div>
     </>
   );

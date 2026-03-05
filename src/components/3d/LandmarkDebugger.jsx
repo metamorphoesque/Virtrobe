@@ -1,12 +1,9 @@
 // src/components/3d/LandmarkDebugger.jsx
 // DROP THIS INTO <SceneContent> TEMPORARILY to find your exact landmark names.
 // Remove it once you've confirmed the names and updated LANDMARKS in GarmentLoader3D.
-//
-// Usage in Scene.jsx:
-//   
-//   
 
 import { useEffect } from 'react';
+import * as THREE from 'three';   // ← was require('three') which breaks in Vite/ESM
 
 const LandmarkDebugger = ({ mannequinRef }) => {
   useEffect(() => {
@@ -18,7 +15,6 @@ const LandmarkDebugger = ({ mannequinRef }) => {
 
       const found = [];
       root.traverse((child) => {
-        // Catch ANY node that might be a landmark — empties, bones, meshes
         const name = child.name?.toLowerCase() ?? '';
         const isLandmark =
           name.includes('landmark') ||
@@ -30,12 +26,12 @@ const LandmarkDebugger = ({ mannequinRef }) => {
           name.includes('shoulder') ||
           name.includes('knee') ||
           name.includes('empty') ||
-          child.type === 'Object3D'; // Blender empties export as Object3D
+          child.type === 'Object3D';
 
         if (isLandmark && child.name) {
           child.updateMatrixWorld(true);
           const pos = child.getWorldPosition
-            ? child.getWorldPosition(new (require('three').Vector3)())
+            ? child.getWorldPosition(new THREE.Vector3())  // ← fixed
             : null;
 
           found.push({
@@ -54,9 +50,7 @@ const LandmarkDebugger = ({ mannequinRef }) => {
         console.warn('  ⚠️ No landmark-like nodes found!');
         console.log('  Dumping ALL named nodes instead:');
         root.traverse((child) => {
-          if (child.name) {
-            console.log(`  [${child.type}] "${child.name}"`);
-          }
+          if (child.name) console.log(`  [${child.type}] "${child.name}"`);
         });
       } else {
         found.forEach((f) => {
@@ -65,12 +59,12 @@ const LandmarkDebugger = ({ mannequinRef }) => {
       }
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log('📋 COPY THESE into GarmentLoader3D LANDMARKS constant');
-    }, 1000); // Wait 1s for mannequin to fully load
+    }, 1000);
 
     return () => clearTimeout(timer);
-  }, [mannequinRef?.current]);
+  }, [mannequinRef?.current]);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  return null; // renders nothing
+  return null;
 };
 
 export default LandmarkDebugger;

@@ -6,7 +6,7 @@ const profileService = {
       .from('profiles')
       .select('*')
       .eq('id', userId)
-      .single();
+      .maybeSingle();             // ← was .single() → 406 if no row yet
     if (error) throw error;
     return data;
   },
@@ -16,7 +16,7 @@ const profileService = {
       .from('profiles')
       .select('*')
       .eq('username', username.toLowerCase())
-      .single();
+      .maybeSingle();             // ← same fix
     if (error) throw error;
     return data;
   },
@@ -30,7 +30,7 @@ const profileService = {
       .update({ ...updates, updated_at: new Date().toISOString() })
       .eq('id', userId)
       .select()
-      .single();
+      .single();                  // ← update() always returns a row, .single() is fine here
     if (error) throw error;
     return data;
   },

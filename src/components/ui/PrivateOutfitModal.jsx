@@ -1,25 +1,20 @@
 // src/components/ui/PrivateOutfitModal.jsx
-// Detail modal for saved outfits (private or public without a submission).
-// LEFT: live Three.js scene reconstruction from saved template IDs + measurements.
-//       Falls back to screenshot if no GLB templates found.
-// RIGHT: outfit name, description, tags, date, garment info, and measurements.
-
 import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { X, Tag, Ruler, Calendar, Lock, Globe, Loader2 } from 'lucide-react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Environment, ContactShadows, Grid } from '@react-three/drei';
 import * as THREE from 'three';
 import { supabase } from '../../services/authService';
+import { STORAGE_BUCKET } from '../../lib/supabase'; // ← import shared bucket constant
 import MorphableMannequin from '../3d/MorphableMannequin';
 import PhysicsGarment from '../3d/PhysicsGarment';
 
 const serif = { fontFamily: "'Cormorant Garamond', Georgia, serif" };
-const mono = { fontFamily: "'DM Mono', 'Courier New', monospace" };
+const mono  = { fontFamily: "'DM Mono', 'Courier New', monospace" };
 
 const fmtDate = (iso) => {
     if (!iso) return '';
-    const d = new Date(iso);
-    return d.toLocaleDateString('en-GB', {
+    return new Date(iso).toLocaleDateString('en-GB', {
         day: '2-digit', month: 'short', year: 'numeric',
         hour: '2-digit', minute: '2-digit',
     });
@@ -33,9 +28,6 @@ const MeasRow = ({ label, value, unit = 'cm' }) =>
         </div>
     ) : null;
 
-// ---------------------------------------------------------------------------
-// ScreenshotPlane — fallback when no GLB available
-// ---------------------------------------------------------------------------
 const ScreenshotPlane = ({ url }) => {
     const [tex, setTex] = useState(null);
     useEffect(() => {
@@ -54,27 +46,18 @@ const ScreenshotPlane = ({ url }) => {
     );
 };
 
-// ---------------------------------------------------------------------------
-// Live3DScene — reconstructs the mannequin + garments from saved data
-// ---------------------------------------------------------------------------
 const Live3DScene = ({ measurements, upperTemplate, lowerTemplate, screenshotUrl }) => {
     const mannequinRef = useRef();
     const has3D = measurements && (upperTemplate?.modelUrl || lowerTemplate?.modelUrl);
 
     const upperGarmentData = upperTemplate?.modelUrl ? {
-        id: upperTemplate.id,
-        name: upperTemplate.name,
-        type: upperTemplate.type,
-        modelUrl: upperTemplate.modelUrl,
-        slot: 'upper',
+        id: upperTemplate.id, name: upperTemplate.name,
+        type: upperTemplate.type, modelUrl: upperTemplate.modelUrl, slot: 'upper',
     } : null;
 
     const lowerGarmentData = lowerTemplate?.modelUrl ? {
-        id: lowerTemplate.id,
-        name: lowerTemplate.name,
-        type: lowerTemplate.type,
-        modelUrl: lowerTemplate.modelUrl,
-        slot: 'lower',
+        id: lowerTemplate.id, name: lowerTemplate.name,
+        type: lowerTemplate.type, modelUrl: lowerTemplate.modelUrl, slot: 'lower',
     } : null;
 
     return (
@@ -92,18 +75,13 @@ const Live3DScene = ({ measurements, upperTemplate, lowerTemplate, screenshotUrl
             <directionalLight position={[4, 6, 4]} intensity={0.6} castShadow />
             <directionalLight position={[-4, 4, -4]} intensity={0.2} />
             <Environment preset="studio" background={false} />
-
             <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
                 <planeGeometry args={[20, 20]} />
                 <meshStandardMaterial color="#eeeeee" roughness={0.7} />
             </mesh>
-
-            <Grid
-                args={[12, 12]} cellSize={0.4} cellThickness={0.18}
+            <Grid args={[12, 12]} cellSize={0.4} cellThickness={0.18}
                 cellColor="#d4d4d4" sectionColor="#d4d4d4"
-                fadeDistance={7} position={[0, 0.001, 0]}
-            />
-
+                fadeDistance={7} position={[0, 0.001, 0]} />
             <ContactShadows position={[0, 0.001, 0]} opacity={0.05} scale={5} blur={5} far={2} />
 
             {has3D ? (
@@ -116,7 +94,6 @@ const Live3DScene = ({ measurements, upperTemplate, lowerTemplate, screenshotUrl
                             standHeight={((measurements.height_cm ?? 170) / 100) * 0.45 - 0.2}
                         />
                     </Suspense>
-
                     {upperGarmentData && mannequinRef && (
                         <Suspense fallback={null}>
                             <PhysicsGarment
@@ -124,12 +101,10 @@ const Live3DScene = ({ measurements, upperTemplate, lowerTemplate, screenshotUrl
                                 garmentData={upperGarmentData}
                                 measurements={measurements}
                                 mannequinRef={mannequinRef}
-                                slot="upper"
-                                layer={0}
+                                slot="upper" layer={0}
                             />
                         </Suspense>
                     )}
-
                     {lowerGarmentData && mannequinRef && (
                         <Suspense fallback={null}>
                             <PhysicsGarment
@@ -137,8 +112,7 @@ const Live3DScene = ({ measurements, upperTemplate, lowerTemplate, screenshotUrl
                                 garmentData={lowerGarmentData}
                                 measurements={measurements}
                                 mannequinRef={mannequinRef}
-                                slot="lower"
-                                layer={0}
+                                slot="lower" layer={0}
                             />
                         </Suspense>
                     )}
@@ -147,24 +121,18 @@ const Live3DScene = ({ measurements, upperTemplate, lowerTemplate, screenshotUrl
                 <ScreenshotPlane url={screenshotUrl} />
             )}
 
-            <OrbitControls
-                makeDefault target={[0, 1.1, 0]}
-                minDistance={1.8} maxDistance={5}
-                enablePan={false}
+            <OrbitControls makeDefault target={[0, 1.1, 0]}
+                minDistance={1.8} maxDistance={5} enablePan={false}
                 minPolarAngle={Math.PI / 5} maxPolarAngle={Math.PI / 1.7}
-                autoRotate autoRotateSpeed={0.5}
-            />
+                autoRotate autoRotateSpeed={0.5} />
         </Canvas>
     );
 };
 
-// ---------------------------------------------------------------------------
-// PrivateOutfitModal
-// ---------------------------------------------------------------------------
 const PrivateOutfitModal = ({ outfit, onClose }) => {
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading]           = useState(true);
     const [screenshotUrl, setScreenshotUrl] = useState(null);
-    const [fullOutfit, setFullOutfit] = useState(null);
+    const [fullOutfit, setFullOutfit]     = useState(null);
     const [upperTemplate, setUpperTemplate] = useState(null);
     const [lowerTemplate, setLowerTemplate] = useState(null);
 
@@ -174,24 +142,22 @@ const PrivateOutfitModal = ({ outfit, onClose }) => {
         return () => window.removeEventListener('keydown', h);
     }, [onClose]);
 
-    // Resolve a garment template to get its model URL
     const resolveTemplate = useCallback(async (templateId) => {
         if (!templateId) return null;
         const { data: tmpl, error: tErr } = await supabase
             .from('garment_templates')
-            .select('id, name, type, model_url, dominant_color')
+            .select('id, name, type, glb_path, dominant_color') // ← was model_url
             .eq('id', templateId)
-            .single();
+            .maybeSingle();                                      // ← was .single()
         if (tErr || !tmpl) return null;
 
-        let modelUrl = tmpl.model_url;
+        let modelUrl = tmpl.glb_path;                           // ← was tmpl.model_url
         if (modelUrl && !modelUrl.startsWith('http')) {
             const { data: signed } = await supabase.storage
-                .from('garment-models')
+                .from(STORAGE_BUCKET)                           // ← was hardcoded 'garment-models'
                 .createSignedUrl(modelUrl, 3600);
             modelUrl = signed?.signedUrl ?? null;
         }
-
         return { ...tmpl, modelUrl };
     }, []);
 
@@ -199,7 +165,6 @@ const PrivateOutfitModal = ({ outfit, onClose }) => {
         const load = async () => {
             setLoading(true);
             try {
-                // Fetch full outfit data
                 const { data, error } = await supabase
                     .from('outfits')
                     .select(`
@@ -214,7 +179,6 @@ const PrivateOutfitModal = ({ outfit, onClose }) => {
                 if (error) throw error;
                 setFullOutfit(data);
 
-                // Resolve screenshot URL
                 if (data.screenshot_url) {
                     const { data: signed } = await supabase.storage
                         .from('moodboard-screenshots')
@@ -224,7 +188,6 @@ const PrivateOutfitModal = ({ outfit, onClose }) => {
                     setScreenshotUrl(outfit.screenshotSignedUrl);
                 }
 
-                // Resolve garment templates in parallel for 3D reconstruction
                 const [upper, lower] = await Promise.all([
                     resolveTemplate(data.upper_template_id),
                     resolveTemplate(data.lower_template_id),
@@ -232,7 +195,6 @@ const PrivateOutfitModal = ({ outfit, onClose }) => {
                 setUpperTemplate(upper);
                 setLowerTemplate(lower);
 
-                // Also store template names on fullOutfit for display
                 if (upper) setFullOutfit(prev => ({ ...prev, upperTemplateName: upper.name, upperTemplateType: upper.type }));
                 if (lower) setFullOutfit(prev => ({ ...prev, lowerTemplateName: lower.name, lowerTemplateType: lower.type }));
             } catch (err) {
@@ -245,30 +207,24 @@ const PrivateOutfitModal = ({ outfit, onClose }) => {
     }, [outfit.id, resolveTemplate]);
 
     const meas = fullOutfit?.measurements_snapshot ?? null;
-    const src = screenshotUrl ?? outfit.screenshotSignedUrl;
+    const src  = screenshotUrl ?? outfit.screenshotSignedUrl;
 
     return (
         <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 md:p-6">
             <div className="absolute inset-0 bg-black/55 backdrop-blur-md" onClick={onClose} />
-
             <div className="relative z-10 w-full max-w-5xl h-[85vh] max-h-[750px] bg-white rounded-3xl overflow-hidden shadow-2xl flex">
 
-                {/* ══ LEFT: 3D scene (55%) ══ */}
+                {/* LEFT: 3D scene */}
                 <div className="relative w-[55%] flex-shrink-0 bg-[#f8f8f8]">
                     {loading ? (
                         <div className="w-full h-full flex items-center justify-center">
                             <div className="w-6 h-6 border-2 border-black/10 border-t-black/40 rounded-full animate-spin" />
                         </div>
                     ) : (
-                        <Live3DScene
-                            measurements={meas}
-                            upperTemplate={upperTemplate}
-                            lowerTemplate={lowerTemplate}
-                            screenshotUrl={src}
-                        />
+                        <Live3DScene measurements={meas} upperTemplate={upperTemplate}
+                            lowerTemplate={lowerTemplate} screenshotUrl={src} />
                     )}
 
-                    {/* Garment name badges — bottom left */}
                     {!loading && (upperTemplate || lowerTemplate) && (
                         <div className="absolute bottom-5 left-5 flex flex-col gap-1.5 pointer-events-none">
                             {upperTemplate && (
@@ -285,25 +241,18 @@ const PrivateOutfitModal = ({ outfit, onClose }) => {
                             )}
                         </div>
                     )}
-
-                    {/* Orbit hint */}
                     <div className="absolute top-4 left-4 bg-white/80 backdrop-blur-sm px-2.5 py-1 rounded-xl border border-black/8">
                         <span className="text-[9px] text-black/35 tracking-wide">Drag to orbit</span>
                     </div>
                 </div>
 
-                {/* Divider */}
                 <div className="w-px bg-black/6 flex-shrink-0" />
 
-                {/* ══ RIGHT: details (45%) ══ */}
+                {/* RIGHT: details */}
                 <div className="flex-1 flex flex-col min-h-0 min-w-0">
-
-                    {/* Header */}
                     <div className="flex items-center justify-between px-7 pt-6 pb-4 border-b border-black/6 flex-shrink-0">
                         <div>
-                            <p className="text-[9px] text-black/25 uppercase tracking-[0.3em] mb-1" style={serif}>
-                                Saved outfit
-                            </p>
+                            <p className="text-[9px] text-black/25 uppercase tracking-[0.3em] mb-1" style={serif}>Saved outfit</p>
                             <h2 className="text-xl font-light text-black" style={serif}>
                                 {loading ? '...' : (fullOutfit?.name ?? outfit.name ?? 'Untitled Look')}
                             </h2>
@@ -313,7 +262,6 @@ const PrivateOutfitModal = ({ outfit, onClose }) => {
                         </button>
                     </div>
 
-                    {/* Scrollable content */}
                     <div className="flex-1 overflow-y-auto px-7 py-6">
                         {loading ? (
                             <div className="flex items-center justify-center py-20">
@@ -321,8 +269,6 @@ const PrivateOutfitModal = ({ outfit, onClose }) => {
                             </div>
                         ) : (
                             <div className="flex flex-col gap-5">
-
-                                {/* Meta row */}
                                 <div className="flex items-center gap-3 text-[10px] text-black/35">
                                     <div className="flex items-center gap-1">
                                         <Calendar className="w-3 h-3" />
@@ -334,14 +280,10 @@ const PrivateOutfitModal = ({ outfit, onClose }) => {
                                     </div>
                                 </div>
 
-                                {/* Description */}
                                 {fullOutfit?.description && (
-                                    <p className="text-[12px] text-black/50 leading-relaxed" style={serif}>
-                                        {fullOutfit.description}
-                                    </p>
+                                    <p className="text-[12px] text-black/50 leading-relaxed" style={serif}>{fullOutfit.description}</p>
                                 )}
 
-                                {/* Tags */}
                                 {fullOutfit?.tags?.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5">
                                         {fullOutfit.tags.map((t) => (
@@ -352,7 +294,6 @@ const PrivateOutfitModal = ({ outfit, onClose }) => {
                                     </div>
                                 )}
 
-                                {/* Garments */}
                                 {(fullOutfit?.upperTemplateName || fullOutfit?.lowerTemplateName) && (
                                     <div className="pt-2 border-t border-black/6">
                                         <p className="text-[9px] text-black/25 uppercase tracking-widest mb-3">Garments</p>
@@ -371,20 +312,19 @@ const PrivateOutfitModal = ({ outfit, onClose }) => {
                                     </div>
                                 )}
 
-                                {/* Measurements */}
                                 {meas && (
                                     <div className="pt-2 border-t border-black/6">
                                         <p className="text-[9px] text-black/25 uppercase tracking-widest mb-3 flex items-center gap-1.5">
                                             <Ruler className="w-3 h-3" /> Body snapshot at time of save
                                         </p>
-                                        <MeasRow label="Gender" value={meas.gender} unit="" />
-                                        <MeasRow label="Height" value={meas.height_cm} />
-                                        <MeasRow label="Weight" value={meas.weight_kg} unit="kg" />
-                                        <MeasRow label="Bust" value={meas.bust_cm} />
-                                        <MeasRow label="Waist" value={meas.waist_cm} />
-                                        <MeasRow label="Hips" value={meas.hips_cm} />
+                                        <MeasRow label="Gender"    value={meas.gender}           unit="" />
+                                        <MeasRow label="Height"    value={meas.height_cm} />
+                                        <MeasRow label="Weight"    value={meas.weight_kg}         unit="kg" />
+                                        <MeasRow label="Bust"      value={meas.bust_cm} />
+                                        <MeasRow label="Waist"     value={meas.waist_cm} />
+                                        <MeasRow label="Hips"      value={meas.hips_cm} />
                                         <MeasRow label="Shoulders" value={meas.shoulder_width_cm} />
-                                        <MeasRow label="BMI" value={meas.bmi} unit="" />
+                                        <MeasRow label="BMI"       value={meas.bmi}               unit="" />
                                     </div>
                                 )}
                             </div>
