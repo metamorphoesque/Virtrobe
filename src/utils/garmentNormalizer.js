@@ -169,9 +169,14 @@ export function normalizeGarment(mesh, garmentData, measurements, mannequinRef) 
     // Safety clamp — don't allow absurd scales
     scale = Math.max(0.05, Math.min(5.0, scale));
 
-    // For bottoms, add a small ease factor (garments are slightly wider than body)
+    // Ease factor — garments should be slightly wider than the raw body
+    // measurement so the surface-snap pass can pull them inward to conform.
+    // Without ease, the garment starts skin-tight and can only be pushed
+    // outward, leaving floating gaps on concave regions.
     if (bodyZone === 'lower') {
-        scale *= 1.08;
+        scale *= 1.08;  // bottoms need more ease (hips + movement room)
+    } else {
+        scale *= 1.05;  // tops need slight ease (shoulders + chest)
     }
 
     // ── Step 7: Compute anchor Y position ────────────────────────────────
