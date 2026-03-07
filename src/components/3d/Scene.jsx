@@ -4,7 +4,7 @@ import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { Environment, ContactShadows, Grid, useGLTF, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import MorphableMannequin from './MorphableMannequin';
-import PhysicsGarment from './PhysicsGarment';
+import WornGarment from './WornGarment';
 import MannequinLandmarks from './MannequinLandmarks';
 import LandmarkDebugger from './LandmarkDebugger';
 
@@ -128,8 +128,8 @@ const BodyDebugBounds = ({ mannequinRef }) => {
 
   return (
     <group>
-      <mesh ref={upperRef}><boxGeometry args={[1,1,1]} /><meshBasicMaterial color="#00ff88" wireframe transparent opacity={0.5} /></mesh>
-      <mesh ref={lowerRef}><boxGeometry args={[1,1,1]} /><meshBasicMaterial color="#0088ff" wireframe transparent opacity={0.5} /></mesh>
+      <mesh ref={upperRef}><boxGeometry args={[1, 1, 1]} /><meshBasicMaterial color="#00ff88" wireframe transparent opacity={0.5} /></mesh>
+      <mesh ref={lowerRef}><boxGeometry args={[1, 1, 1]} /><meshBasicMaterial color="#0088ff" wireframe transparent opacity={0.5} /></mesh>
     </group>
   );
 };
@@ -139,8 +139,8 @@ const FRONT_ROTATION_Y = Math.PI / 2;
 // View angles: front, side-left, back
 const VIEW_ANGLES = {
   front: Math.PI / 2,
-  side:  Math.PI,
-  back:  (3 * Math.PI) / 2,
+  side: Math.PI,
+  back: (3 * Math.PI) / 2,
 };
 
 const SceneContent = forwardRef(({
@@ -226,18 +226,18 @@ const SceneContent = forwardRef(({
         />
 
         {resolvedUpper && (
-          <PhysicsGarment
+          <WornGarment
             key={`upper-0-${resolvedUpper.id ?? resolvedUpper.name}`}
             garmentData={resolvedUpper} measurements={measurements}
-            mannequinRef={internalRef} slot="upper" layer={0}
+            mannequinRef={internalRef}
           />
         )}
 
         {resolvedLower && (
-          <PhysicsGarment
+          <WornGarment
             key={`lower-0-${resolvedLower.id ?? resolvedLower.name}`}
             garmentData={resolvedLower} measurements={measurements}
-            mannequinRef={internalRef} slot="lower" layer={0}
+            mannequinRef={internalRef}
           />
         )}
 

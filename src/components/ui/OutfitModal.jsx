@@ -13,7 +13,7 @@ import { useOutfitModal } from '../../hooks/useOutfitModal';
 
 // Reuse the project's existing 3D components
 import MorphableMannequin from '../3d/MorphableMannequin';
-import PhysicsGarment     from '../3d/PhysicsGarment';
+import WornGarment from '../3d/WornGarment';
 
 const serif = { fontFamily: "'Cormorant Garamond', Georgia, serif" };
 
@@ -55,19 +55,19 @@ const Live3DScene = ({ measurements, upperTemplate, lowerTemplate, screenshotUrl
   const has3D = measurements && (upperTemplate?.modelUrl || lowerTemplate?.modelUrl);
 
   const upperGarmentData = upperTemplate?.modelUrl ? {
-    id:       upperTemplate.id,
-    name:     upperTemplate.name,
-    type:     upperTemplate.type,
+    id: upperTemplate.id,
+    name: upperTemplate.name,
+    type: upperTemplate.type,
     modelUrl: upperTemplate.modelUrl,
-    slot:     'upper',
+    slot: 'upper',
   } : null;
 
   const lowerGarmentData = lowerTemplate?.modelUrl ? {
-    id:       lowerTemplate.id,
-    name:     lowerTemplate.name,
-    type:     lowerTemplate.type,
+    id: lowerTemplate.id,
+    name: lowerTemplate.name,
+    type: lowerTemplate.type,
     modelUrl: lowerTemplate.modelUrl,
-    slot:     'lower',
+    slot: 'lower',
   } : null;
 
   return (
@@ -113,26 +113,22 @@ const Live3DScene = ({ measurements, upperTemplate, lowerTemplate, screenshotUrl
 
           {upperGarmentData && mannequinRef && (
             <Suspense fallback={null}>
-              <PhysicsGarment
+              <WornGarment
                 key={`upper-modal-${upperGarmentData.id}`}
                 garmentData={upperGarmentData}
                 measurements={measurements}
                 mannequinRef={mannequinRef}
-                slot="upper"
-                layer={0}
               />
             </Suspense>
           )}
 
           {lowerGarmentData && mannequinRef && (
             <Suspense fallback={null}>
-              <PhysicsGarment
+              <WornGarment
                 key={`lower-modal-${lowerGarmentData.id}`}
                 garmentData={lowerGarmentData}
                 measurements={measurements}
                 mannequinRef={mannequinRef}
-                slot="lower"
-                layer={0}
               />
             </Suspense>
           )}
@@ -217,7 +213,7 @@ const OutfitModal = ({ submissionId, onClose, currentUser }) => {
   } = useOutfitModal(submissionId, currentUserId);
 
   const [commentText, setCommentText] = useState('');
-  const [activeTab, setActiveTab]     = useState('comments');
+  const [activeTab, setActiveTab] = useState('comments');
   const commentsEndRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -238,9 +234,9 @@ const OutfitModal = ({ submissionId, onClose, currentUser }) => {
     setCommentText('');
   };
 
-  const outfit      = submission?.outfit ?? null;
-  const submitter   = submission?.submitter ?? null;
-  const meas        = outfit?.measurements_snapshot ?? null;
+  const outfit = submission?.outfit ?? null;
+  const submitter = submission?.submitter ?? null;
+  const meas = outfit?.measurements_snapshot ?? null;
 
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 md:p-6">
@@ -309,10 +305,10 @@ const OutfitModal = ({ submissionId, onClose, currentUser }) => {
                   <><Skeleton className="w-9 h-9 rounded-full" /><div className="flex flex-col gap-1"><Skeleton className="w-24 h-3 rounded" /><Skeleton className="w-16 h-2.5 rounded" /></div></>
                 ) : (
                   <><Avatar url={submitter?.avatar_url} name={submitter?.display_name} size={9} />
-                  <div>
-                    <p className="text-[13px] font-semibold text-black leading-none">{submitter?.display_name ?? 'Anonymous'}</p>
-                    <p className="text-[10px] text-black/30 mt-0.5">@{submitter?.username ?? '—'}</p>
-                  </div></>
+                    <div>
+                      <p className="text-[13px] font-semibold text-black leading-none">{submitter?.display_name ?? 'Anonymous'}</p>
+                      <p className="text-[10px] text-black/30 mt-0.5">@{submitter?.username ?? '—'}</p>
+                    </div></>
                 )}
               </div>
               <button onClick={onClose} className="p-2 rounded-xl hover:bg-black/5 text-black/25 hover:text-black transition-colors">
@@ -367,7 +363,7 @@ const OutfitModal = ({ submissionId, onClose, currentUser }) => {
             {activeTab === 'comments' && (
               loading ? (
                 <div className="flex flex-col gap-4 pt-2">
-                  {[1,2,3].map((i) => <div key={i} className="flex gap-2.5"><Skeleton className="w-7 h-7 rounded-full flex-shrink-0" /><div className="flex-1 flex flex-col gap-1.5"><Skeleton className="w-24 h-2.5 rounded" /><Skeleton className="w-full h-3 rounded" /></div></div>)}
+                  {[1, 2, 3].map((i) => <div key={i} className="flex gap-2.5"><Skeleton className="w-7 h-7 rounded-full flex-shrink-0" /><div className="flex-1 flex flex-col gap-1.5"><Skeleton className="w-24 h-2.5 rounded" /><Skeleton className="w-full h-3 rounded" /></div></div>)}
                 </div>
               ) : comments.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full pb-8 opacity-25 select-none">
@@ -389,14 +385,14 @@ const OutfitModal = ({ submissionId, onClose, currentUser }) => {
                 ) : (
                   <>
                     <p className="text-[9px] text-black/25 uppercase tracking-widest mb-4">Body snapshot at time of save</p>
-                    <MeasRow label="Gender"    value={meas.gender}              unit="" />
-                    <MeasRow label="Height"    value={meas.height_cm} />
-                    <MeasRow label="Weight"    value={meas.weight_kg}           unit="kg" />
-                    <MeasRow label="Bust"      value={meas.bust_cm} />
-                    <MeasRow label="Waist"     value={meas.waist_cm} />
-                    <MeasRow label="Hips"      value={meas.hips_cm} />
+                    <MeasRow label="Gender" value={meas.gender} unit="" />
+                    <MeasRow label="Height" value={meas.height_cm} />
+                    <MeasRow label="Weight" value={meas.weight_kg} unit="kg" />
+                    <MeasRow label="Bust" value={meas.bust_cm} />
+                    <MeasRow label="Waist" value={meas.waist_cm} />
+                    <MeasRow label="Hips" value={meas.hips_cm} />
                     <MeasRow label="Shoulders" value={meas.shoulder_width_cm} />
-                    <MeasRow label="BMI"       value={meas.bmi}                 unit="" />
+                    <MeasRow label="BMI" value={meas.bmi} unit="" />
                     {/* Garment labels */}
                     {(upperTemplate || lowerTemplate) && (
                       <div className="mt-5 pt-4 border-t border-black/6">

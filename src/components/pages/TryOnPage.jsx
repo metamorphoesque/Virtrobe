@@ -1,5 +1,5 @@
 // src/components/pages/TryOnPage.jsx
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
 import Scene from '../3d/Scene';
 import GenderSelector from '../TryOn/GenderSelector';
 import ClothingSidebar from '../TryOn/ClothingSidebar';
@@ -18,7 +18,7 @@ import SaveOutfitDialog from '../TryOn/SaveOutfitDialog';
 
 const UPPER_SLOT = 'upper';
 const LOWER_SLOT = 'lower';
-const LOWER_TYPES = new Set(['pants','skirt','shorts','trousers','jeans','leggings']);
+const LOWER_TYPES = new Set(['pants', 'skirt', 'shorts', 'trousers', 'jeans', 'leggings']);
 const slotForType = (type) => LOWER_TYPES.has(type?.toLowerCase()) ? LOWER_SLOT : UPPER_SLOT;
 
 const AuthModal = ({ onClose, onAuthSuccess }) => (
@@ -80,22 +80,43 @@ const TryOnPage = ({ user, onUserChange, onNavigate }) => {
     }
   }, [garmentUpload.garmentData]);
 
-  const _setGarmentForSlot = (slot, garmentData, templateId = null) => {
+  const _setGarmentForSlot = useCallback((slot, garmentData, templateId = null) => {
     if (slot === UPPER_SLOT) {
-      setUpperGarment(garmentData ? { ...garmentData, slot: UPPER_SLOT } : null);
+      setUpperGarment(prev => {
+        if (!garmentData) return null;
+        // Avoid creating a new object if data hasn't changed
+        const next = { ...garmentData, slot: UPPER_SLOT };
+        if (prev && prev.name === next.name && prev.modelUrl === next.modelUrl && prev.slot === next.slot) return prev;
+        return next;
+      });
       setUpperTemplateId(templateId);
     } else {
-      setLowerGarment(garmentData ? { ...garmentData, slot: LOWER_SLOT } : null);
+      setLowerGarment(prev => {
+        if (!garmentData) return null;
+        const next = { ...garmentData, slot: LOWER_SLOT };
+        if (prev && prev.name === next.name && prev.modelUrl === next.modelUrl && prev.slot === next.slot) return prev;
+        return next;
+      });
       setLowerTemplateId(templateId);
     }
-  };
+  }, []);
 
-  const clearSlot = (slot) => _setGarmentForSlot(slot, null);
-  const clearAllGarments = () => {
+  const clearSlot = useCallback((slot) => _setGarmentForSlot(slot, null), [_setGarmentForSlot]);
+  const clearAllGarments = useCallback(() => {
     setUpperGarment(null); setLowerGarment(null);
     setUpperTemplateId(null); setLowerTemplateId(null);
     garmentUpload.clearGarment();
-  };
+  }, [garmentUpload]);
+
+  // ── Stable garment data objects for Scene ──────────────────────
+  // These useMemo wrappers ensure Scene/WornGarment only re-fits
+  // when the actual garment identity changes, not on every render.
+  const stableUpperGarment = useMemo(() => upperGarment, [
+    upperGarment?.name, upperGarment?.modelUrl, upperGarment?.slot, upperGarment?.id
+  ]);
+  const stableLowerGarment = useMemo(() => lowerGarment, [
+    lowerGarment?.name, lowerGarment?.modelUrl, lowerGarment?.slot, lowerGarment?.id
+  ]);
 
   const handleReset = () => { bodyMeasurements.setGender(null); clearAllGarments(); };
 
@@ -250,8 +271,8 @@ const TryOnPage = ({ user, onUserChange, onNavigate }) => {
               <Scene
                 ref={sceneRef}
                 measurements={bodyMeasurements.measurements}
-                upperGarmentData={upperGarment}
-                lowerGarmentData={lowerGarment}
+                upperGarmentData={stableUpperGarment}
+                lowerGarmentData={stableLowerGarment}
                 showGarment={hasAnyGarment}
                 autoRotate={!hasAnyGarment}
                 mannequinRef={bodyMeasurements.mannequinRef ?? undefined}

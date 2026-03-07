@@ -7,10 +7,10 @@ import * as THREE from 'three';
 import { supabase } from '../../services/authService';
 import { STORAGE_BUCKET } from '../../lib/supabase'; // ← import shared bucket constant
 import MorphableMannequin from '../3d/MorphableMannequin';
-import PhysicsGarment from '../3d/PhysicsGarment';
+import WornGarment from '../3d/WornGarment';
 
 const serif = { fontFamily: "'Cormorant Garamond', Georgia, serif" };
-const mono  = { fontFamily: "'DM Mono', 'Courier New', monospace" };
+const mono = { fontFamily: "'DM Mono', 'Courier New', monospace" };
 
 const fmtDate = (iso) => {
     if (!iso) return '';
@@ -96,23 +96,21 @@ const Live3DScene = ({ measurements, upperTemplate, lowerTemplate, screenshotUrl
                     </Suspense>
                     {upperGarmentData && mannequinRef && (
                         <Suspense fallback={null}>
-                            <PhysicsGarment
+                            <WornGarment
                                 key={`upper-priv-${upperGarmentData.id}`}
                                 garmentData={upperGarmentData}
                                 measurements={measurements}
                                 mannequinRef={mannequinRef}
-                                slot="upper" layer={0}
                             />
                         </Suspense>
                     )}
                     {lowerGarmentData && mannequinRef && (
                         <Suspense fallback={null}>
-                            <PhysicsGarment
+                            <WornGarment
                                 key={`lower-priv-${lowerGarmentData.id}`}
                                 garmentData={lowerGarmentData}
                                 measurements={measurements}
                                 mannequinRef={mannequinRef}
-                                slot="lower" layer={0}
                             />
                         </Suspense>
                     )}
@@ -130,9 +128,9 @@ const Live3DScene = ({ measurements, upperTemplate, lowerTemplate, screenshotUrl
 };
 
 const PrivateOutfitModal = ({ outfit, onClose }) => {
-    const [loading, setLoading]           = useState(true);
+    const [loading, setLoading] = useState(true);
     const [screenshotUrl, setScreenshotUrl] = useState(null);
-    const [fullOutfit, setFullOutfit]     = useState(null);
+    const [fullOutfit, setFullOutfit] = useState(null);
     const [upperTemplate, setUpperTemplate] = useState(null);
     const [lowerTemplate, setLowerTemplate] = useState(null);
 
@@ -207,7 +205,7 @@ const PrivateOutfitModal = ({ outfit, onClose }) => {
     }, [outfit.id, resolveTemplate]);
 
     const meas = fullOutfit?.measurements_snapshot ?? null;
-    const src  = screenshotUrl ?? outfit.screenshotSignedUrl;
+    const src = screenshotUrl ?? outfit.screenshotSignedUrl;
 
     return (
         <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 md:p-6">
@@ -317,14 +315,14 @@ const PrivateOutfitModal = ({ outfit, onClose }) => {
                                         <p className="text-[9px] text-black/25 uppercase tracking-widest mb-3 flex items-center gap-1.5">
                                             <Ruler className="w-3 h-3" /> Body snapshot at time of save
                                         </p>
-                                        <MeasRow label="Gender"    value={meas.gender}           unit="" />
-                                        <MeasRow label="Height"    value={meas.height_cm} />
-                                        <MeasRow label="Weight"    value={meas.weight_kg}         unit="kg" />
-                                        <MeasRow label="Bust"      value={meas.bust_cm} />
-                                        <MeasRow label="Waist"     value={meas.waist_cm} />
-                                        <MeasRow label="Hips"      value={meas.hips_cm} />
+                                        <MeasRow label="Gender" value={meas.gender} unit="" />
+                                        <MeasRow label="Height" value={meas.height_cm} />
+                                        <MeasRow label="Weight" value={meas.weight_kg} unit="kg" />
+                                        <MeasRow label="Bust" value={meas.bust_cm} />
+                                        <MeasRow label="Waist" value={meas.waist_cm} />
+                                        <MeasRow label="Hips" value={meas.hips_cm} />
                                         <MeasRow label="Shoulders" value={meas.shoulder_width_cm} />
-                                        <MeasRow label="BMI"       value={meas.bmi}               unit="" />
+                                        <MeasRow label="BMI" value={meas.bmi} unit="" />
                                     </div>
                                 )}
                             </div>
