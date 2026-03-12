@@ -2,24 +2,22 @@
 // ═══════════════════════════════════════════════════════════════════
 //  WORN GARMENT — R3F component that replaces PhysicsGarment.
 //
-//  Uses GarmentFitter for one-time fitting. Per-frame work is
-//  limited to rotation sync + live anchor Y only.
+//  Calls GarmentFitter ONCE on load inside useMemo.
+//  Per-frame work is limited to rotation sync only — no position
+//  or scale changes per frame.
 //
-//  Handles both:
-//    • Hand-modelled Blender template GLBs (with shape keys)
-//    • TripoSR generated GLBs (chaotic topology, no shape keys)
+//  Handles both TripoSR and Blender template GLBs via isTemplate.
 // ═══════════════════════════════════════════════════════════════════
 
 import React, { useRef, useMemo, Suspense } from 'react';
 import { useLoader, useFrame } from '@react-three/fiber';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import * as THREE from 'three';
-import GarmentFitter from '../../services/GarmentFitter';
+import GarmentFitter from '../../utils/GarmentFitter';
 
 // Pre-allocated — never GC inside useFrame
-const _quat = new THREE.Quaternion();
 const _anchorPos = new THREE.Vector3();
-
+const _quat = new THREE.Quaternion();
 const GARMENT_Y_CORRECTION = -Math.PI / 2;
 const _correction = new THREE.Quaternion().setFromAxisAngle(
     new THREE.Vector3(0, 1, 0), GARMENT_Y_CORRECTION
@@ -57,32 +55,33 @@ const GarmentMesh = ({ modelUrl, garmentData, mannequinRef, measurements }) => {
     const meshRef = useRef();
     const gltf = useLoader(GLTFLoader, modelUrl);
 
-    // ── Detect body zone (stable across renders) ───────────────────
+    const isTemplate = garmentData?.isTemplate === true;
+
+    // ── Detect body zone (stable) ──────────────────────────────────
     const bodyZone = useMemo(
         () => GarmentFitter.detectBodyZone(garmentData),
         [garmentData.name, garmentData.type, garmentData.category, garmentData.slot]
     );
 
-    // ── One-time: clone + fit + morph adaptation ───────────────────
+    // ── One-time: clone + pivot + fit + morph ──────────────────────
     //
-    //  Runs ONCE per garment model. Dependencies are primitives
-    //  (not object refs) to avoid re-render loops.
+    //  Pipeline:
+    //    1. Clone the GLB scene
+    //    2. centrePivot() — fix arbitrary TripoSR pivots
+    //    3. fitToMannequin() — compute per-axis scale + anchor
+    //    4. Apply scale
+    //    5. applyMorphDeltas() — shape keys or cage deformer
+    //    6. Compute garment top Y for anchor positioning
     //
-    //  Output:
-    //    mesh          — the cloned, scaled, morph-adapted Object3D
-    //    anchorName    — which landmark to anchor to in useFrame
-    //    garmentTopY   — the scaled garment's top Y in local space
-    //                    (used to compute: position.y = anchorY - garmentTopY)
     const fitted = useMemo(() => {
-        console.log(`🧥 WornGarment: fitting "${garmentData.name}" (zone=${bodyZone})...`);
+        console.log(`🧥 WornGarment: fitting "${garmentData.name}" (zone=${bodyZone}, isTemplate=${isTemplate})...`);
 
-        // 1. Clone the loaded scene
+        // 1. Clone
         const mesh = gltf.scene.clone(true);
         mesh.position.set(0, 0, 0);
         mesh.quaternion.identity();
         mesh.scale.set(1, 1, 1);
 
-        // Enable shadows
         mesh.traverse(child => {
             if (child.isMesh) {
                 child.castShadow = true;
@@ -90,36 +89,40 @@ const GarmentMesh = ({ modelUrl, garmentData, mannequinRef, measurements }) => {
             }
         });
 
-        // 2. Get live landmarks from mannequin
-        let liveLandmarks = {};
-        let mannequinMesh = null;
-        if (mannequinRef?.current) {
-            mannequinRef.current.updateMatrixWorld(true);
-            const getLm = mannequinRef.current.getLiveLandmarks;
-            if (getLm) liveLandmarks = getLm();
-            mannequinMesh = GarmentFitter.getMannequinMesh(mannequinRef.current);
-        }
+        // 2. Centre pivot — BEFORE scaling (Blender "Set Origin to Geometry")
+        //    For template garments the pivot is typically pre-set, but
+        //    it's safe to run anyway (no-op if already centred).
+        GarmentFitter.centrePivot(mesh);
 
-        // 3. Fit to mannequin → per-axis scale + anchor info
+        // 3. Get mannequin ref for fitting
+        const mannNode = mannequinRef?.current ?? null;
+        const mannequinMesh = mannNode ? GarmentFitter.getMannequinMesh(mannNode) : null;
+
+        // 4. Fit → per-axis scale + anchor info
         const fitting = GarmentFitter.fitToMannequin(
-            mesh, liveLandmarks, measurements, bodyZone
+            mesh, mannNode, measurements, bodyZone, isTemplate
         );
 
-        // 4. Apply the computed scale to the mesh itself
+        // 5. Apply independent per-axis scale
         mesh.scale.set(fitting.scaleX, fitting.scaleY, fitting.scaleZ);
         mesh.updateMatrixWorld(true);
 
-        // 5. Apply morph deltas (shape keys or cage deformer)
-        //    Runs AFTER scale so cage deformer verts are in correct space
+        // 6. Apply morph deltas (shape keys or cage deformer) — runs ONCE
         GarmentFitter.applyMorphDeltas(
-            mesh, liveLandmarks, mannequinMesh, measurements, bodyZone
+            mesh, mannNode, mannequinMesh, measurements, bodyZone
         );
 
-        // 6. Compute the garment's top Y after scaling
-        //    (this is the offset we subtract from the anchor to position correctly)
+        // 7. Anchor positioning — top of garment aligns with anchor landmark
+        mesh.position.set(0, 0, 0);
         mesh.updateMatrixWorld(true);
         const scaledBox = new THREE.Box3().setFromObject(mesh);
         const garmentTopY = scaledBox.max.y;
+
+        // Position: top of garment at anchorY, centred on X/Z
+        mesh.position.set(0, fitting.anchorY - garmentTopY, 0);
+
+        console.log(`   garmentTopY=${garmentTopY.toFixed(4)}, anchorY=${fitting.anchorY.toFixed(4)}`);
+        console.log(`   → positionY=${(fitting.anchorY - garmentTopY).toFixed(4)}`);
 
         return {
             mesh,
@@ -128,31 +131,33 @@ const GarmentMesh = ({ modelUrl, garmentData, mannequinRef, measurements }) => {
             garmentTopY,
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [gltf, garmentData, bodyZone,
+    }, [gltf, garmentData.name, garmentData.type, garmentData.modelUrl,
+        bodyZone, isTemplate,
         measurements?.gender, measurements?.height_cm,
         measurements?.bust_cm, measurements?.waist_cm,
         measurements?.hips_cm, measurements?.shoulder_width_cm,
         measurements?.bmi]);
 
-    // ── Per-frame: rotation sync + live anchor Y ───────────────────
-    //  Extremely cheap:
-    //    • One getWorldQuaternion
-    //    • One getWorldPosition (if landmark exists)
-    //    • Set position + quaternion on the wrapper node
-    //    • No vertex work, no bounding box, no raycasting
+    // ── Per-frame: rotation sync only ──────────────────────────────
+    //
+    //  The garment is a child of the same rotated <group> as the
+    //  mannequin so it inherits the transform automatically. But we
+    //  also sync the mannequin's world quaternion with the -π/2 Y
+    //  correction that is already working. Only rotation — no
+    //  position or scale changes per frame.
+    //
     useFrame(() => {
         if (!meshRef.current || !mannequinRef?.current || !fitted) return;
 
         mannequinRef.current.updateMatrixWorld(true);
 
-        // ── Rotation: match mannequin + Y correction ───
+        // Rotation sync: copy mannequin world quaternion + Y correction
         mannequinRef.current.getWorldQuaternion(_quat);
         _quat.multiply(_correction);
         meshRef.current.quaternion.copy(_quat);
 
-        // ── Position: anchor garment top to live landmark Y ───
+        // Live anchor Y tracking (landmarks move with morph targets)
         let anchorY = fitted.anchorY;
-
         const getLandmarks = mannequinRef.current.getLiveLandmarks;
         if (getLandmarks) {
             const lm = getLandmarks();
@@ -164,7 +169,7 @@ const GarmentMesh = ({ modelUrl, garmentData, mannequinRef, measurements }) => {
             }
         }
 
-        // garment top edge → anchor Y
+        // Anchor: top of garment at landmark Y, centred on X/Z
         meshRef.current.position.set(0, anchorY - fitted.garmentTopY, 0);
     });
 
