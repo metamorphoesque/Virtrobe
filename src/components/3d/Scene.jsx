@@ -1,7 +1,7 @@
 // src/components/3d/Scene.jsx
-import React, { useRef, useEffect, useImperativeHandle, forwardRef, useState } from 'react';
+import React, { useRef, useEffect, useImperativeHandle, forwardRef, useState, useCallback } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
-import { Environment, ContactShadows, Grid, useGLTF, OrbitControls } from '@react-three/drei';
+import { Environment, ContactShadows, Grid, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import MorphableMannequin from './MorphableMannequin';
 import WornGarment from './WornGarment';
@@ -16,12 +16,12 @@ const DisplayStand = ({ position = [0, 0, 0], scale = 1 }) => {
 useGLTF.preload('/models/DisplayStand.glb');
 
 // ---------------------------------------------------------------------------
-// Camera controller — exposes flyToFront() and capture() via ref
+// Camera controller — LOCKED camera, no orbiting.  Exposes flyToFront()
+// and capture() via ref.  The camera is stationary at a fixed position.
 // ---------------------------------------------------------------------------
 const CameraController = forwardRef(({ onReady }, ref) => {
   const { camera, gl, scene } = useThree();
-  const orbitRef = useRef();
-  const flyTarget = useRef(null); // { pos: Vector3, look: Vector3 }
+  const flyTarget = useRef(null);
   const flying = useRef(false);
 
   useEffect(() => {
@@ -31,7 +31,6 @@ const CameraController = forwardRef(({ onReady }, ref) => {
   }, [camera]);
 
   useImperativeHandle(ref, () => ({
-    // Smoothly fly camera to front-facing position then call cb
     flyToFront(cb) {
       flyTarget.current = {
         pos: new THREE.Vector3(0, 1.2, 3.2),
@@ -39,16 +38,13 @@ const CameraController = forwardRef(({ onReady }, ref) => {
         cb,
       };
       flying.current = true;
-      if (orbitRef.current) orbitRef.current.enabled = false;
     },
-    // Capture canvas as base64 PNG
     capture() {
       gl.render(scene, camera);
       return gl.domElement.toDataURL('image/png');
     },
-    // Re-enable orbit controls after capture
     enableOrbit() {
-      if (orbitRef.current) orbitRef.current.enabled = true;
+      // no-op — orbit controls are removed
     },
   }));
 
@@ -70,16 +66,31 @@ const CameraController = forwardRef(({ onReady }, ref) => {
     }
   });
 
-  return <OrbitControls ref={orbitRef} makeDefault target={[0, 1, 0]} />;
+  // No OrbitControls — camera is completely locked
+  return null;
 });
 
-const MannequinRotationController = ({ groupRef, shouldFaceFront, viewAngle }) => {
+// ---------------------------------------------------------------------------
+// Mannequin rotation controller — lerps the group rotation based on either
+// viewAngle (from the Front/Side/Back buttons) OR userAngle (from pointer
+// drag on the canvas).
+// ---------------------------------------------------------------------------
+const MannequinRotationController = ({ groupRef, shouldFaceFront, viewAngle, userAngle }) => {
   useFrame(() => {
     if (!groupRef.current) return;
-    // viewAngle overrides shouldFaceFront when explicitly set
-    const target = viewAngle !== undefined
-      ? viewAngle
-      : shouldFaceFront ? Math.PI / 2 : groupRef.current.rotation.y;
+
+    // Priority: userAngle (from drag) > viewAngle (from buttons) > auto
+    let target;
+    if (userAngle !== undefined && userAngle !== null) {
+      target = userAngle;
+    } else if (viewAngle !== undefined) {
+      target = viewAngle;
+    } else if (shouldFaceFront) {
+      target = Math.PI / 2;
+    } else {
+      return; // auto-rotate is handled elsewhere
+    }
+
     groupRef.current.rotation.y = THREE.MathUtils.lerp(
       groupRef.current.rotation.y, target, 0.1
     );
@@ -152,6 +163,8 @@ const SceneContent = forwardRef(({
   autoRotate,
   mannequinRef,
   viewAngle,        // ← controlled from TryOnPage via SceneOverlay
+  easeFactor,       // ← ease slider value
+  userAngle,        // ← pointer-drag rotation angle
 }, ref) => {
   const internalRef = useRef();
   const groupRef = useRef();
@@ -185,6 +198,7 @@ const SceneContent = forwardRef(({
         groupRef={groupRef}
         shouldFaceFront={hasAnyGarment}
         viewAngle={viewAngle !== undefined ? VIEW_ANGLES[viewAngle] : undefined}
+        userAngle={userAngle}
       />
 
       <ambientLight intensity={0.8} />
@@ -230,6 +244,7 @@ const SceneContent = forwardRef(({
             key={`upper-0-${resolvedUpper.id ?? resolvedUpper.name}`}
             garmentData={resolvedUpper} measurements={measurements}
             mannequinRef={internalRef}
+            easeFactor={easeFactor}
           />
         )}
 
@@ -238,6 +253,7 @@ const SceneContent = forwardRef(({
             key={`lower-0-${resolvedLower.id ?? resolvedLower.name}`}
             garmentData={resolvedLower} measurements={measurements}
             mannequinRef={internalRef}
+            easeFactor={easeFactor}
           />
         )}
 
@@ -251,15 +267,63 @@ const SceneContent = forwardRef(({
 
 // ---------------------------------------------------------------------------
 // Scene — forwards ref so TryOnPage can call capture() + flyToFront()
+// Camera is locked. Pointer drag on the canvas rotates the mannequin.
 // ---------------------------------------------------------------------------
 const Scene = forwardRef((props, ref) => {
   const { mannequinRef, ...sceneProps } = props;
+
+  // ── Pointer-drag rotation state ──────────────────────────────
+  const [userAngle, setUserAngle] = useState(null);
+  const dragging = useRef(false);
+  const lastX = useRef(0);
+  const angleRef = useRef(FRONT_ROTATION_Y);
+
+  // When viewAngle changes from the buttons, drop userAngle so the
+  // MannequinRotationController picks up the button value.
+  useEffect(() => {
+    if (props.viewAngle !== undefined) {
+      const target = VIEW_ANGLES[props.viewAngle];
+      if (target !== undefined) {
+        angleRef.current = target;
+        setUserAngle(null);
+      }
+    }
+  }, [props.viewAngle]);
+
+  // Has garment = allow drag rotation
+  const hasGarment = !!(props.upperGarmentData || props.lowerGarmentData);
+
+  const onPointerDown = useCallback((e) => {
+    if (!hasGarment) return;
+    dragging.current = true;
+    lastX.current = e.clientX;
+  }, [hasGarment]);
+
+  const onPointerMove = useCallback((e) => {
+    if (!dragging.current) return;
+    const deltaX = e.clientX - lastX.current;
+    lastX.current = e.clientX;
+    // Sensitivity: ~3px per degree
+    angleRef.current += deltaX * 0.006;
+    setUserAngle(angleRef.current);
+  }, []);
+
+  const onPointerUp = useCallback(() => {
+    dragging.current = false;
+  }, []);
 
   const handleContextLost = (e) => { e.preventDefault(); console.error('WebGL context lost'); };
   const handleContextRestored = () => console.log('WebGL context restored');
 
   return (
-    <div className="w-full h-full">
+    <div
+      className="w-full h-full"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerLeave={onPointerUp}
+      style={{ cursor: hasGarment ? 'grab' : 'default' }}
+    >
       <Canvas
         camera={{ position: [0, 1.2, 4], fov: 50 }}
         shadows
@@ -272,7 +336,12 @@ const Scene = forwardRef((props, ref) => {
           gl.domElement.addEventListener('webglcontextrestored', handleContextRestored);
         }}
       >
-        <SceneContent ref={ref} {...sceneProps} mannequinRef={mannequinRef} />
+        <SceneContent
+          ref={ref}
+          {...sceneProps}
+          mannequinRef={mannequinRef}
+          userAngle={userAngle}
+        />
       </Canvas>
     </div>
   );

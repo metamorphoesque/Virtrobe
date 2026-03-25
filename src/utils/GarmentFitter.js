@@ -8,11 +8,12 @@
 //  2. storeOriginalGeometry(mesh)    — once on load
 //  3. projectOntoBody(...)           — THE MAIN FITTING STEP
 //     • restores original geometry
-//     • maps garment Y → body Y (proportional remap)
+//     • maps garment Y → body Y (proportional remap from live landmarks)
 //     • projects each vertex radially onto body surface + ease
 //     • preserves garment's relative radial variation (flares/tapers)
-//     • returns { anchorY, bodyZoneTop, bodyZoneBottom }
-//  4. WornGarment positions mesh at anchorY
+//     • writes FINAL world-Y positions into vertices (no posY offset needed)
+//     • returns { anchorY, zoneTop, zoneBottom }
+//  4. Mesh stays at identity transform — vertices ARE at world positions
 //
 //  KEY INSIGHT:
 //    Instead of scale-normalize-expand (which crushes proportions),
@@ -71,11 +72,16 @@ const MORPH_ALIASES = {
 // ─────────────────────────────────────────────
 //  CONFIGURATION
 // ─────────────────────────────────────────────
-// Ease = garment sits this factor outside the body surface
-const EASE_FACTOR = 1.06;
+// Base ease = garment sits this factor outside the body surface
+const DEFAULT_EASE_FACTOR = 1.08;
+// Extra ease at bust and hips where body curvature causes peeking
+const EASE_BUST_BOOST = 0.03;  // +3% at bust peak
+const EASE_HIPS_BOOST = 0.03;  // +3% at hips peak
+// Gaussian falloff half-width for boost zones (world units)
+const EASE_BOOST_SIGMA = 0.06;
 
 // Number of Y slices and angular bins for body profile
-const PROFILE_Y_STEPS  = 40;
+const PROFILE_Y_STEPS  = 48;
 const PROFILE_ANG_BINS = 16;
 
 // How many Y-bands to use when computing garment's radial profile
@@ -101,10 +107,16 @@ const SMOOTH_FACTOR     = 0.3;
  * Build a 2D body profile: for each Y-slice and angle bin, record the
  * maximum XZ radius of the mannequin mesh.
  *
+ * @param toLocalMatrix  Optional Matrix4. When provided, mannequin
+ *   vertices are transformed by this matrix instead of localToWorld.
+ *   This lets us build the profile in the GARMENT's coordinate frame
+ *   (= groupRef-local) rather than world space, so the XZ angles
+ *   match the garment's own vertex angles.
+ *
  * Returns: { yMin, yMax, ySteps, angBins, data: Float32Array[ySteps * angBins] }
  * data[yIdx * angBins + angIdx] = radius at that (y, angle) pair
  */
-function _buildAngularBodyProfile(mannequinMesh, yMin, yMax, ySteps = PROFILE_Y_STEPS, angBins = PROFILE_ANG_BINS) {
+function _buildAngularBodyProfile(mannequinMesh, yMin, yMax, ySteps = PROFILE_Y_STEPS, angBins = PROFILE_ANG_BINS, toLocalMatrix = null) {
     const data = new Float32Array(ySteps * angBins);
     if (!mannequinMesh?.geometry?.attributes?.position) {
         return { yMin, yMax, ySteps, angBins, data };
@@ -123,7 +135,15 @@ function _buildAngularBodyProfile(mannequinMesh, yMin, yMax, ySteps = PROFILE_Y_
 
         for (let i = 0; i < pos.count; i++) {
             wv.fromBufferAttribute(pos, i);
-            mannequinMesh.localToWorld(wv);
+
+            // Transform vertex to the target coordinate frame.
+            // toLocalMatrix maps: mannequin-mesh-local → groupRef-local
+            // (the same frame the garment vertices live in).
+            if (toLocalMatrix) {
+                wv.applyMatrix4(toLocalMatrix);
+            } else {
+                mannequinMesh.localToWorld(wv);
+            }
 
             if (Math.abs(wv.y - worldY) > sliceH) continue;
 
@@ -455,6 +475,123 @@ class GarmentFitter {
     }
 
     // ═══════════════════════════════════════════════════════════════
+    //  detectAndAlignFront — FRONT FACE DETECTION & ALIGNMENT
+    //
+    //  Analyses the garment mesh normals to determine which axis
+    //  direction the "front" of the garment faces (the side with
+    //  the most outward-pointing geometry — typically the chest).
+    //  Then bakes a rotation into the geometry so the front aligns
+    //  with the mannequin's front axis (+Z in local space).
+    //
+    //  MUST be called BEFORE centrePivot & storeOriginalGeometry.
+    // ═══════════════════════════════════════════════════════════════
+    static detectAndAlignFront(mesh) {
+        mesh.updateMatrixWorld(true);
+
+        // ── 1. Accumulate face normals weighted by area ─────────────
+        //    For each axis direction (+X, -X, +Z, -Z) we sum the
+        //    face-area contribution. The largest tells us where the
+        //    majority of outward-facing surface points → that's the
+        //    garment's front.
+        const dirScores = { '+X': 0, '-X': 0, '+Z': 0, '-Z': 0 };
+        const vA = new THREE.Vector3();
+        const vB = new THREE.Vector3();
+        const vC = new THREE.Vector3();
+        const faceNormal = new THREE.Vector3();
+        const edge1 = new THREE.Vector3();
+        const edge2 = new THREE.Vector3();
+
+        mesh.traverse(child => {
+            if (!child.isMesh || !child.geometry?.attributes?.position) return;
+
+            const geo = child.geometry;
+            const pos = geo.attributes.position;
+            const nrm = geo.attributes.normal;
+            const idx = geo.index;
+
+            // If we have normals, use the average normal direction weighted
+            // by face area.  Otherwise fall back to cross-product normals.
+            const faceCount = idx
+                ? Math.floor(idx.count / 3)
+                : Math.floor(pos.count / 3);
+
+            for (let fi = 0; fi < faceCount; fi++) {
+                const i0 = idx ? idx.getX(fi * 3)     : fi * 3;
+                const i1 = idx ? idx.getX(fi * 3 + 1) : fi * 3 + 1;
+                const i2 = idx ? idx.getX(fi * 3 + 2) : fi * 3 + 2;
+
+                vA.fromBufferAttribute(pos, i0);
+                vB.fromBufferAttribute(pos, i1);
+                vC.fromBufferAttribute(pos, i2);
+
+                // Face area (half the cross-product magnitude)
+                edge1.subVectors(vB, vA);
+                edge2.subVectors(vC, vA);
+                faceNormal.crossVectors(edge1, edge2);
+                const area = faceNormal.length() * 0.5;
+
+                // Use supplied normals if available (more reliable for
+                // smooth-shaded meshes); otherwise use the cross product.
+                if (nrm) {
+                    const nA = new THREE.Vector3().fromBufferAttribute(nrm, i0);
+                    const nB = new THREE.Vector3().fromBufferAttribute(nrm, i1);
+                    const nC = new THREE.Vector3().fromBufferAttribute(nrm, i2);
+                    faceNormal.copy(nA).add(nB).add(nC).normalize();
+                } else {
+                    faceNormal.normalize();
+                }
+
+                // Score each horizontal direction
+                dirScores['+X'] += Math.max(0, faceNormal.x)  * area;
+                dirScores['-X'] += Math.max(0, -faceNormal.x) * area;
+                dirScores['+Z'] += Math.max(0, faceNormal.z)  * area;
+                dirScores['-Z'] += Math.max(0, -faceNormal.z) * area;
+            }
+        });
+
+        // ── 2. Pick dominant front direction ────────────────────────
+        let bestDir = '+Z';
+        let bestScore = 0;
+        for (const [dir, score] of Object.entries(dirScores)) {
+            if (score > bestScore) { bestDir = dir; bestScore = score; }
+        }
+
+        console.log(`   🧭 Front-face scores: +X=${dirScores['+X'].toFixed(2)} -X=${dirScores['-X'].toFixed(2)} +Z=${dirScores['+Z'].toFixed(2)} -Z=${dirScores['-Z'].toFixed(2)}`);
+        console.log(`   🧭 Detected garment front: ${bestDir}`);
+
+        // ── 3. Rotation needed to bring bestDir → +Z ───────────────
+        //    (mannequin front = +Z in local space)
+        const rotationMap = {
+            '+Z':  0,               // already aligned
+            '-Z':  Math.PI,         // 180°
+            '+X': -Math.PI / 2,     // −90°
+            '-X':  Math.PI / 2,     //  90°
+        };
+        const angle = rotationMap[bestDir] ?? 0;
+
+        if (Math.abs(angle) > 0.001) {
+            // Bake the rotation into the geometry so the mesh stays
+            // at identity transform.
+            const rotMatrix = new THREE.Matrix4().makeRotationY(angle);
+            const normalMatrix = new THREE.Matrix3().getNormalMatrix(rotMatrix);
+
+            mesh.traverse(child => {
+                if (!child.isMesh || !child.geometry) return;
+                child.geometry.applyMatrix4(rotMatrix);
+                // Recompute normals after geometry rotation
+                child.geometry.computeVertexNormals();
+            });
+
+            console.log(`   🔄 Rotated garment geometry by ${(angle * 180 / Math.PI).toFixed(0)}° to align front with +Z`);
+        } else {
+            console.log('   ✅ Garment front already aligned with +Z');
+        }
+
+        mesh.updateMatrixWorld(true);
+        return bestDir;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
     //  projectOntoBody — THE CORE FITTING ALGORITHM
     //
     //  This replaces both fitToMannequin() and shrinkWrapToMannequin().
@@ -468,10 +605,13 @@ class GarmentFitter {
     //    6. Write back local position
     //
     //  Returns { anchorY, zoneTop, zoneBottom } for positioning.
+    //
+    //  easeFactor: override the base ease (1.0 = skin-tight, 1.08 = default,
+    //              1.2+ = loose). Controlled by the UI ease slider.
     // ═══════════════════════════════════════════════════════════════
-    static projectOntoBody(garmentRoot, mannequinNode, measurements, bodyZone) {
+    static projectOntoBody(garmentRoot, mannequinNode, measurements, bodyZone, easeFactor = DEFAULT_EASE_FACTOR) {
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log(`🎯 projectOntoBody zone=${bodyZone}`);
+        console.log(`🎯 projectOntoBody zone=${bodyZone} ease=${easeFactor.toFixed(3)}`);
 
         // ── 0. Restore clean geometry ───────────────────────────────
         GarmentFitter.restoreOriginalGeometry(garmentRoot);
@@ -490,6 +630,35 @@ class GarmentFitter {
         mannequinNode.updateMatrixWorld(true);
         mannequinMesh.updateMatrixWorld(true);
 
+        // ── 1b. Compute coordinate-frame transform ──────────────────
+        //   The garment mesh has identity transform and sits directly
+        //   under the shared parent group (groupRef in Scene.jsx).
+        //   So garment vertex positions are in groupRef-local space.
+        //
+        //   The mannequin mesh is ALSO under groupRef, but nested
+        //   inside its own <group> with scale=0.5 + position=standHeight.
+        //   mannequinMesh.localToWorld() gives TRUE world space, which
+        //   INCLUDES the groupRef rotation — the garment does NOT have
+        //   that rotation baked into its vertices.
+        //
+        //   Fix: build body profile in groupRef-local space so XZ
+        //   angles match the garment's own vertex angles.
+        //
+        //   toGarmentSpace = inverse(groupRef.matrixWorld) * mannequinMesh.matrixWorld
+        //   This maps:  mannequin-mesh-local → world → groupRef-local
+        let toGarmentSpace = null;
+        const parentGroup = mannequinNode.parent; // = groupRef
+        if (parentGroup) {
+            parentGroup.updateMatrixWorld(true);
+            toGarmentSpace = new THREE.Matrix4()
+                .copy(parentGroup.matrixWorld)
+                .invert()
+                .multiply(mannequinMesh.matrixWorld);
+            console.log('   🔗 Body profile will be built in groupRef-local space');
+        } else {
+            console.warn('   ⚠️ No parent group — falling back to world-space body profile');
+        }
+
         // ── 2. Get landmarks ────────────────────────────────────────
         const gender   = measurements?.gender || 'female';
         const baseline = BASELINE_LANDMARKS[gender] || BASELINE_LANDMARKS.female;
@@ -499,6 +668,8 @@ class GarmentFitter {
             liveLm = GarmentFitter.getLandmarkPositions(mannequinNode.getLiveLandmarks());
         }
 
+        // Landmark Y values: world-space Y = groupRef-local Y because
+        // groupRef only applies a Y-axis rotation (Y is invariant).
         const neckY     = liveLm.landmark_neck?.y       ?? baseline.landmark_neck.y;
         const shoulderY = liveLm.landmark_shoulder_L?.y  ?? baseline.landmark_shoulder_L.y;
         const waistY    = liveLm.landmark_waist?.y       ?? baseline.landmark_waist.y;
@@ -507,32 +678,47 @@ class GarmentFitter {
         console.log(`   📍 neckY=${neckY.toFixed(3)} shoulderY=${shoulderY.toFixed(3)} waistY=${waistY.toFixed(3)} hipsY=${hipsY.toFixed(3)}`);
 
         // ── 3. Define target body zone ──────────────────────────────
-        // Upper: shoulder → waist (with some extension above for collar and below for hip overhang)
-        // Lower: waist → floor
+        // The FULL zone = where garment vertices are Y-remapped to.
+        // The FITTING zone = subset where body projection is applied at 100%.
+        // Outside fitting zone, vertices blend toward uniformly-scaled original.
         let zoneTop, zoneBottom, anchorY;
+        let fitTop, fitBottom; // fitting sub-zone boundaries
 
         if (bodyZone === 'upper') {
-            zoneTop    = neckY + 0.03;    // slightly above neck for collar
-            zoneBottom = waistY - 0.08;   // slightly below waist for shirt hem
+            zoneTop    = neckY + 0.05;    // above neck for collar
+            zoneBottom = waistY - 0.10;   // below waist for shirt hem
             anchorY    = shoulderY;
+            // Fitting zone: shoulder to waist — sleeves/collar are outside
+            fitTop     = shoulderY;
+            fitBottom  = waistY;
         } else {
             zoneTop    = waistY + 0.03;   // slightly above waist
-            zoneBottom = 0.0;             // floor
+            // Lower body stops at mannequin bottom, not floor
+            const mBox = new THREE.Box3().setFromObject(mannequinNode);
+            zoneBottom = Math.max(0.0, mBox.min.y - 0.02);
             anchorY    = waistY;
+            // Fitting zone: waist to hips — below hips is free (pant legs, skirt hem)
+            fitTop     = waistY;
+            fitBottom  = hipsY;
         }
 
         const zoneHeight = zoneTop - zoneBottom;
+        // Blend ramp width: how many world units the blend transition takes
+        const blendWidth = zoneHeight * 0.15;
         console.log(`   📐 zone: top=${zoneTop.toFixed(3)} bottom=${zoneBottom.toFixed(3)} height=${zoneHeight.toFixed(3)}`);
+        console.log(`   🎯 fit zone: top=${fitTop.toFixed(3)} bottom=${fitBottom.toFixed(3)} blendW=${blendWidth.toFixed(3)}`);
 
         // ── 4. Build angular body profile ───────────────────────────
-        // Extend sampling range a bit beyond the zone
+        //   Built in groupRef-local space (same frame as garment vertices)
+        //   so that θ angles match between body and garment.
         const profileMargin = 0.1;
         const bodyProfile = _buildAngularBodyProfile(
             mannequinMesh,
             zoneBottom - profileMargin,
             zoneTop + profileMargin,
             PROFILE_Y_STEPS,
-            PROFILE_ANG_BINS
+            PROFILE_ANG_BINS,
+            toGarmentSpace   // ← coordinate-frame fix
         );
 
         // Log average radii at key heights
@@ -559,10 +745,21 @@ class GarmentFitter {
 
         console.log(`   📊 flareRatio=${flareRatio.toFixed(2)} hasFlare=${hasFlare}`);
 
+        // ── 6b. Precompute bust/hip Y for per-vertex ease boost ──────
+        // Bust is midway between shoulder and waist for upper zone
+        const bustY = bodyZone === 'upper'
+            ? waistY + (shoulderY - waistY) * 0.45
+            : -999; // no bust boost for lower garments
+
         // ── 7. Per-vertex radial projection ─────────────────────────
         const garmentLocalYMin = gProfile.localYMin;
         const garmentLocalYMax = gProfile.localYMax;
         const garmentYRange    = garmentLocalYMax - garmentLocalYMin;
+
+        // Uniform scale for the "original shape" fallback outside fitting zone.
+        // This brings the garment to roughly the same size as the body zone
+        // without distorting proportions.
+        const uniformScale = garmentYRange > 0.001 ? zoneHeight / garmentYRange : 1.0;
 
         let projected = 0, total = 0;
 
@@ -601,46 +798,89 @@ class GarmentFitter {
                 // 7f. Body radius at this (worldY, θ)
                 const bodyR = _sampleBodyProfile(bodyProfile, worldY, theta);
 
+                // 7f½. Per-vertex ease: base + Gaussian boost at bust & hips
+                const bustDist = Math.abs(worldY - bustY);
+                const hipsDist = Math.abs(worldY - hipsY);
+                const bustBoost = EASE_BUST_BOOST * Math.exp(-0.5 * (bustDist / EASE_BOOST_SIGMA) ** 2);
+                const hipsBoost = EASE_HIPS_BOOST * Math.exp(-0.5 * (hipsDist / EASE_BOOST_SIGMA) ** 2);
+                const vertexEase = easeFactor + bustBoost + hipsBoost;
+
                 // 7g. Compute target radius
                 let targetR;
 
                 if (localR < 0.001) {
                     // Interior/seam vertex near the Y-axis
                     // Place at half body radius
-                    targetR = bodyR * EASE_FACTOR * 0.5;
+                    targetR = bodyR * vertexEase * 0.5;
                 } else if (hasFlare && ratio > FLARE_THRESHOLD) {
                     // Flared section: preserve the flare but scaled relative to body
                     // The flare amount beyond threshold is kept proportionally
                     const flareAmount = ratio - 1.0;
-                    targetR = bodyR * EASE_FACTOR * (1.0 + flareAmount * 0.7);
+                    targetR = bodyR * vertexEase * (1.0 + flareAmount * 0.7);
                 } else if (ratio > 1.0) {
                     // Slightly loose/wide area: ease outward gently
                     // Blend between body-hugging and preserving looseness
                     const looseAmount = ratio - 1.0;
-                    targetR = bodyR * EASE_FACTOR * (1.0 + looseAmount * 0.4);
+                    targetR = bodyR * vertexEase * (1.0 + looseAmount * 0.4);
                 } else {
                     // Tight/fitted area: sit right on the body + ease
                     // Slight modulation by ratio to preserve surface detail
-                    targetR = bodyR * EASE_FACTOR * Math.max(0.85, ratio);
+                    targetR = bodyR * vertexEase * Math.max(0.85, ratio);
                 }
 
                 // 7h. Never go inside the body
-                targetR = Math.max(targetR, bodyR * 1.005);
+                targetR = Math.max(targetR, bodyR * 1.008);
 
                 // 7i. Compute new local position
-                // The new position in world space is (targetR * cos(θ), worldY, targetR * sin(θ))
-                // But we need to write in local space — since garment has identity transform,
-                // local = world for XZ, but Y needs to be the mapped local Y.
-                const newX = targetR * Math.cos(theta);
-                const newZ = targetR * Math.sin(theta);
-                // Y: the mapped world position is where this vertex "wants" to be.
-                // But we can't write worldY directly because the mesh will be positioned later.
-                // Instead, we remap worldY back to a local Y that, after positioning,
-                // ends up at worldY. Since the mesh position is set by WornGarment
-                // after this function returns, we write the world-relative Y.
-                // The mesh will be positioned so its bounding box top aligns with anchorY.
-                // So we write positions relative to the zone, and let WornGarment handle final Y.
-                const newY = worldY;
+                // Garment mesh has identity transform (pos=0, scale=1, rot=identity)
+                // so local coords = world coords. The parent group in Scene.jsx
+                // only applies a Y-rotation, which doesn't affect Y positions.
+                // worldY was derived from live landmarks (which already include
+                // standHeight), so the vertex ends up at the correct absolute
+                // world-Y regardless of mannequin height or stand changes.
+                const projX = targetR * Math.cos(theta);
+                const projZ = targetR * Math.sin(theta);
+                const projY = worldY;
+
+                // ── 7j. Blend: fitting zone vs original shape ───────────
+                // Inside the fitting zone (shoulder→waist or waist→hips):
+                //   blend = 1.0 → fully projected onto body
+                // Outside the fitting zone (sleeves, collar, pant legs, skirt hem):
+                //   blend ramps to 0.0 → preserves original garment shape
+                //   (uniformly scaled to match zone size)
+                let blend = 1.0;
+
+                if (worldY > fitTop) {
+                    // Above fitting zone (sleeves, collar for upper)
+                    const dist = worldY - fitTop;
+                    blend = 1.0 - Math.min(1.0, dist / blendWidth);
+                    blend = blend * blend; // ease-out curve (smooth)
+                } else if (worldY < fitBottom) {
+                    // Below fitting zone (pant legs, skirt hem for lower)
+                    const dist = fitBottom - worldY;
+                    blend = 1.0 - Math.min(1.0, dist / blendWidth);
+                    blend = blend * blend;
+                }
+
+                let newX, newY, newZ;
+
+                if (blend >= 0.999) {
+                    // Fully projected — fast path
+                    newX = projX;
+                    newY = projY;
+                    newZ = projZ;
+                } else {
+                    // Blend with uniformly-scaled original position.
+                    // The "original" position is the garment vertex scaled uniformly
+                    // to the zone size and offset so its Y maps to worldY.
+                    const origX = lx * uniformScale;
+                    const origZ = lz * uniformScale;
+                    const origY = worldY; // Y always mapped (vertical placement is always correct)
+
+                    newX = projX * blend + origX * (1.0 - blend);
+                    newY = origY; // Y is always from the remap, never "original"
+                    newZ = projZ * blend + origZ * (1.0 - blend);
+                }
 
                 posAttr.setXYZ(i, newX, newY, newZ);
                 projected++;
@@ -756,4 +996,4 @@ class GarmentFitter {
 }
 
 export default GarmentFitter;
-export { BASELINE_LANDMARKS, BASELINE_MEASUREMENTS };
+export { BASELINE_LANDMARKS, BASELINE_MEASUREMENTS, DEFAULT_EASE_FACTOR };

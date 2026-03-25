@@ -161,6 +161,16 @@ const MorphableMannequin = forwardRef(({
     if (autoRotate && group.current) group.current.rotation.y += delta * 0.3;
   });
 
+  // When auto-rotation stops (garment is selected), reset the internal
+  // group rotation to 0 so there's no stale rotation offset. The parent
+  // <group ref={groupRef}> in Scene.jsx handles all intentional rotation.
+  useEffect(() => {
+    if (!autoRotate && group.current) {
+      group.current.rotation.y = 0;
+      group.current.updateMatrixWorld(true);
+    }
+  }, [autoRotate]);
+
   useEffect(() => {
     if (!ref || !group.current) return;
     // Expose live landmark nodes — callers must call updateWorldMatrix(true)

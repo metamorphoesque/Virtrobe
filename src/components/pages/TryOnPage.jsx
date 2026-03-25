@@ -15,6 +15,7 @@ import { useNotification } from '../../hooks/useNotification';
 import garmentTemplateService from '../../services/garmentTemplateService';
 import { useSaveOutfit } from '../../hooks/useSaveOutfit';
 import SaveOutfitDialog from '../TryOn/SaveOutfitDialog';
+import { DEFAULT_EASE_FACTOR } from '../../utils/GarmentFitter';
 
 const UPPER_SLOT = 'upper';
 const LOWER_SLOT = 'lower';
@@ -51,6 +52,9 @@ const TryOnPage = ({ user, onUserChange, onNavigate }) => {
 
   // View angle: 'front' | 'side' | 'back'
   const [activeView, setActiveView] = useState('front');
+
+  // Ease factor for garment tightness/looseness
+  const [easeValue, setEaseValue] = useState(DEFAULT_EASE_FACTOR);
 
   const [selectedClothingType, setSelectedClothingType] = useState('shirt');
   const [upperGarment, setUpperGarment] = useState(null);
@@ -277,6 +281,7 @@ const TryOnPage = ({ user, onUserChange, onNavigate }) => {
                 autoRotate={!hasAnyGarment}
                 mannequinRef={bodyMeasurements.mannequinRef ?? undefined}
                 viewAngle={activeView}
+                easeFactor={easeValue}
               />
 
               <SceneOverlay
@@ -299,6 +304,8 @@ const TryOnPage = ({ user, onUserChange, onNavigate }) => {
                 onSave={handleSave}
                 activeView={activeView}
                 onViewChange={setActiveView}
+                easeValue={easeValue}
+                onEaseChange={setEaseValue}
               />
             </div>
 

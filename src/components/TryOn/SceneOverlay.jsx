@@ -1,6 +1,6 @@
 // src/components/TryOn/SceneOverlay.jsx
 import React from 'react';
-import { User, RotateCcw, Lock, Plus, X } from 'lucide-react';
+import { User, RotateCcw, Lock, Plus, X, SlidersHorizontal } from 'lucide-react';
 
 const Tooltip = ({ text, children }) => {
   const [show, setShow] = React.useState(false);
@@ -101,6 +101,43 @@ const ViewControls = ({ activeView, onViewChange, visible }) => {
 };
 
 // ---------------------------------------------------------------------------
+// Ease / Fit slider — controls garment tightness
+// ---------------------------------------------------------------------------
+const EaseSlider = ({ value, onChange, visible }) => {
+  const pct = ((value - 0.95) / (1.25 - 0.95)) * 100;
+  const label = value <= 1.0 ? 'Skin-tight' : value <= 1.08 ? 'Standard' : value <= 1.15 ? 'Relaxed' : 'Loose';
+
+  return (
+    <div className={`absolute top-16 left-4 z-30 transition-all duration-500
+      ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`}>
+      <div className="bg-black/50 backdrop-blur-md rounded-2xl p-3 border border-white/10 shadow-lg w-48">
+        <div className="flex items-center gap-2 mb-2">
+          <SlidersHorizontal className="w-3 h-3 text-white/60" />
+          <span className="text-[10px] text-white/60 uppercase tracking-widest">Fit / Ease</span>
+          <span className="ml-auto text-[10px] text-white/80 font-semibold">{label}</span>
+        </div>
+        <input
+          type="range"
+          min="0.95"
+          max="1.25"
+          step="0.01"
+          value={value}
+          onChange={(e) => onChange(parseFloat(e.target.value))}
+          className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
+          style={{
+            background: `linear-gradient(to right, #34d399 0%, #34d399 ${pct}%, rgba(255,255,255,0.15) ${pct}%, rgba(255,255,255,0.15) 100%)`,
+          }}
+        />
+        <div className="flex justify-between text-[9px] text-white/25 mt-1">
+          <span>Tight</span>
+          <span>Loose</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
 // SceneOverlay
 // ---------------------------------------------------------------------------
 const SceneOverlay = ({
@@ -124,6 +161,9 @@ const SceneOverlay = ({
   // View angle controls
   activeView,
   onViewChange,
+  // Ease slider
+  easeValue,
+  onEaseChange,
 }) => {
   return (
     <>
@@ -179,6 +219,13 @@ const SceneOverlay = ({
           <span className="text-[11px] text-black/60">← Pick a garment from the sidebar</span>
         </div>
       )}
+
+      {/* Ease slider — visible when garment is worn */}
+      <EaseSlider
+        value={easeValue}
+        onChange={onEaseChange}
+        visible={hasAnyGarment}
+      />
 
       {/* View angle controls — centred bottom, shown when mannequin is selected */}
       <ViewControls

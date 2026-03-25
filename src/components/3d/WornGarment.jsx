@@ -1,17 +1,12 @@
 // src/components/3d/WornGarment.jsx
 import React, { useRef, useMemo, Suspense } from 'react';
-import { useLoader, useFrame } from '@react-three/fiber';
+import { useLoader } from '@react-three/fiber';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import * as THREE from 'three';
 import GarmentFitter from '../../utils/GarmentFitter';
+import { DEFAULT_EASE_FACTOR } from '../../utils/GarmentFitter';
 
-const _quat = new THREE.Quaternion();
-const GARMENT_Y_CORRECTION = -Math.PI / 2;
-const _correction = new THREE.Quaternion().setFromAxisAngle(
-    new THREE.Vector3(0, 1, 0), GARMENT_Y_CORRECTION
-);
-
-const WornGarment = ({ garmentData, mannequinRef, measurements }) => {
+const WornGarment = ({ garmentData, mannequinRef, measurements, easeFactor }) => {
     const modelUrl = garmentData?.modelUrl;
     if (!modelUrl) return null;
 
@@ -26,12 +21,13 @@ const WornGarment = ({ garmentData, mannequinRef, measurements }) => {
                 garmentData={garmentData}
                 mannequinRef={mannequinRef}
                 measurements={measurements}
+                easeFactor={easeFactor}
             />
         </Suspense>
     );
 };
 
-const GarmentMesh = ({ modelUrl, garmentData, mannequinRef, measurements }) => {
+const GarmentMesh = ({ modelUrl, garmentData, mannequinRef, measurements, easeFactor }) => {
     const meshRef = useRef();
     const gltf = useLoader(GLTFLoader, modelUrl);
 
@@ -40,7 +36,7 @@ const GarmentMesh = ({ modelUrl, garmentData, mannequinRef, measurements }) => {
         [garmentData.name, garmentData.type, garmentData.category, garmentData.slot]
     );
 
-    // Stage 1: Clone + pivot + snapshot (only when model changes)
+    // Stage 1: Clone + FRONT-FACE ALIGNMENT + pivot + snapshot (only when model changes)
     const baseMesh = useMemo(() => {
         const mesh = gltf.scene.clone(true);
         mesh.position.set(0, 0, 0);
@@ -55,6 +51,10 @@ const GarmentMesh = ({ modelUrl, garmentData, mannequinRef, measurements }) => {
             }
         });
 
+        // ▸ Detect the garment's front face and rotate geometry so it
+        //   aligns with the mannequin's front (+Z). Must happen BEFORE
+        //   centrePivot and storeOriginalGeometry.
+        GarmentFitter.detectAndAlignFront(mesh);
         GarmentFitter.centrePivot(mesh);
         GarmentFitter.storeOriginalGeometry(mesh);
         return mesh;
@@ -67,6 +67,7 @@ const GarmentMesh = ({ modelUrl, garmentData, mannequinRef, measurements }) => {
 
         const mesh = baseMesh;
         const mannequinNode = mannequinRef.current;
+        const ease = easeFactor ?? DEFAULT_EASE_FACTOR;
 
         // Reset transforms before projection
         mesh.position.set(0, 0, 0);
@@ -83,30 +84,27 @@ const GarmentMesh = ({ modelUrl, garmentData, mannequinRef, measurements }) => {
         );
 
         // 2. RADIAL BODY PROJECTION — the main fitting step
-        //    This replaces the old fitToMannequin() + shrinkWrapToMannequin()
         //    Vertices are reprojected directly onto the body surface + ease.
-        //    No scale is applied — the projection handles all sizing.
+        //    easeFactor controls how tight/loose the garment fits.
         const result = GarmentFitter.projectOntoBody(
-            mesh, mannequinNode, measurements, bodyZone
+            mesh, mannequinNode, measurements, bodyZone, ease
         );
 
-        // 3. Position the mesh
-        //    After projection, vertices are in world-Y space (they were
-        //    written as world positions). The mesh just needs to be at origin.
-        //    Since projectOntoBody writes worldY directly into vertex positions
-        //    and the mesh transform is identity, the vertices ARE at their
-        //    final world positions. No additional positioning needed.
+        // 3. No positioning needed — projectOntoBody writes vertex Y as the
+        //    final world-Y, derived from live landmarks (which already include
+        //    standHeight via getWorldPosition). The mesh stays at identity
+        //    transform.
         mesh.position.set(0, 0, 0);
         mesh.updateMatrixWorld(true);
 
-        // Verify bounding box
+        // Verify bounding box matches expected zone
         const box = new THREE.Box3().setFromObject(mesh);
         console.log(`   📦 Final garment bbox: y=[${box.min.y.toFixed(3)}, ${box.max.y.toFixed(3)}] x=[${box.min.x.toFixed(3)}, ${box.max.x.toFixed(3)}]`);
 
         return { mesh, anchorY: result.anchorY };
 
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [baseMesh, bodyZone,
+    }, [baseMesh, bodyZone, easeFactor,
         measurements?.gender,
         measurements?.height_cm,
         measurements?.bust_cm,
@@ -116,12 +114,9 @@ const GarmentMesh = ({ modelUrl, garmentData, mannequinRef, measurements }) => {
         measurements?.bmi,
     ]);
 
-    useFrame(() => {
-        if (!meshRef.current || !mannequinRef?.current || !fitted) return;
-        mannequinRef.current.getWorldQuaternion(_quat);
-        _quat.multiply(_correction);
-        meshRef.current.quaternion.copy(_quat);
-    });
+    // NOTE: No useFrame rotation sync needed.
+    // The garment is a child of the same <group> as the mannequin in Scene.jsx,
+    // so it inherits the parent group's rotation automatically.
 
     if (!fitted) return null;
     return <primitive ref={meshRef} object={fitted.mesh} />;
