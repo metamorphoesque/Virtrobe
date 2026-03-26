@@ -324,7 +324,7 @@ const TryOnPage = ({ user, onUserChange, onNavigate }) => {
           />
         )}
 
-        <MeasurementPanel bodyMeasurements={bodyMeasurements} unitConversion={unitConversion} />
+        <MeasurementPanel bodyMeasurements={bodyMeasurements} unitConversion={unitConversion} hasAnyGarment={hasAnyGarment} />
       </div>
     </>
   );

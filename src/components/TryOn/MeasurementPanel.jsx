@@ -1,8 +1,8 @@
 // src/components/TryOn/MeasurementPanel.jsx
 import React from 'react';
-import { Lock, Unlock, ChevronDown, ChevronUp, Ruler } from 'lucide-react';
+import { Lock, Unlock, ChevronDown, ChevronUp, Ruler, Shirt } from 'lucide-react';
 
-const MeasurementPanel = ({ bodyMeasurements = {}, unitConversion = {} }) => {
+const MeasurementPanel = ({ bodyMeasurements = {}, unitConversion = {}, hasAnyGarment = false }) => {
   const {
     gender = null,
     height = 170,
@@ -33,6 +33,10 @@ const MeasurementPanel = ({ bodyMeasurements = {}, unitConversion = {} }) => {
   const [detailsOpen, setDetailsOpen] = React.useState(false);
   const [bmiOpen, setBmiOpen] = React.useState(false);
 
+  // Measurements are LOCKED when any garment layer is filled.
+  // User must clear all garments before re-adjusting the mannequin.
+  const locked = hasAnyGarment;
+
   return (
     <div className="w-80 bg-white border-l border-black/10 flex flex-col overflow-y-auto relative flex-shrink-0">
       {/* Locked overlay when no gender selected */}
@@ -49,7 +53,24 @@ const MeasurementPanel = ({ bodyMeasurements = {}, unitConversion = {} }) => {
         </div>
       )}
 
-      <div className={`flex flex-col h-full ${!gender ? 'opacity-20' : 'opacity-100'} transition-opacity duration-300`}>
+      {/* Locked overlay when garment is worn */}
+      {gender && locked && (
+        <div className="absolute inset-0 bg-white/80 backdrop-blur-[2px] z-10 flex items-center justify-center">
+          <div className="text-center px-6">
+            <div className="w-10 h-10 rounded-full bg-black/8 flex items-center justify-center mx-auto mb-3">
+              <Shirt className="w-5 h-5 text-black/40" />
+            </div>
+            <p className="text-[11px] font-semibold text-black/50 leading-relaxed mb-1">
+              Measurements Locked
+            </p>
+            <p className="text-[10px] text-black/35 leading-relaxed">
+              Remove all garments to adjust body measurements
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className={`flex flex-col h-full ${!gender ? 'opacity-20' : locked ? 'opacity-40' : 'opacity-100'} transition-opacity duration-300`}>
 
         {/* Header */}
         <div className="px-6 pt-6 pb-4 border-b border-black/6">
@@ -66,8 +87,8 @@ const MeasurementPanel = ({ bodyMeasurements = {}, unitConversion = {} }) => {
                 {heightUnit === 'cm' ? `${height} cm` : `${convertHeight(height)} ft`}
               </span>
               <button
-                onClick={() => gender && toggleHeightUnit()}
-                disabled={!gender}
+                onClick={() => gender && !locked && toggleHeightUnit()}
+                disabled={!gender || locked}
                 className="text-[10px] text-black/50 hover:text-black px-1.5 py-0.5 rounded border border-black/15 hover:border-black disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {heightUnit === 'cm' ? 'ft' : 'cm'}
@@ -76,8 +97,8 @@ const MeasurementPanel = ({ bodyMeasurements = {}, unitConversion = {} }) => {
           </div>
           <input
             type="range" min="140" max="200" value={height}
-            onChange={(e) => gender && setHeight(Number(e.target.value))}
-            disabled={!gender}
+            onChange={(e) => gender && !locked && setHeight(Number(e.target.value))}
+            disabled={!gender || locked}
             className="w-full h-1.5 bg-black/10 rounded-full appearance-none cursor-pointer accent-black disabled:cursor-not-allowed"
           />
           <div className="flex justify-between text-[10px] text-black/25 mt-1.5">
@@ -94,8 +115,8 @@ const MeasurementPanel = ({ bodyMeasurements = {}, unitConversion = {} }) => {
                 {weightUnit === 'kg' ? `${weight} kg` : `${convertWeight(weight)} lbs`}
               </span>
               <button
-                onClick={() => gender && toggleWeightUnit()}
-                disabled={!gender}
+                onClick={() => gender && !locked && toggleWeightUnit()}
+                disabled={!gender || locked}
                 className="text-[10px] text-black/50 hover:text-black px-1.5 py-0.5 rounded border border-black/15 hover:border-black disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {weightUnit === 'kg' ? 'lbs' : 'kg'}
@@ -104,8 +125,8 @@ const MeasurementPanel = ({ bodyMeasurements = {}, unitConversion = {} }) => {
           </div>
           <input
             type="range" min="40" max="120" value={weight}
-            onChange={(e) => gender && setWeight(Number(e.target.value))}
-            disabled={!gender}
+            onChange={(e) => gender && !locked && setWeight(Number(e.target.value))}
+            disabled={!gender || locked}
             className="w-full h-1.5 bg-black/10 rounded-full appearance-none cursor-pointer accent-black disabled:cursor-not-allowed"
           />
           <div className="flex justify-between text-[10px] text-black/25 mt-1.5">
@@ -117,7 +138,7 @@ const MeasurementPanel = ({ bodyMeasurements = {}, unitConversion = {} }) => {
         <div className="border-b border-black/6">
           <button
             onClick={() => setBmiOpen((v) => !v)}
-            disabled={!gender}
+            disabled={!gender || locked}
             className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-black/[0.02] transition-colors disabled:cursor-not-allowed"
           >
             <span className="text-xs font-medium text-black/60 uppercase tracking-wide">Body Profile</span>
@@ -148,7 +169,7 @@ const MeasurementPanel = ({ bodyMeasurements = {}, unitConversion = {} }) => {
         <div className="border-b border-black/6">
           <button
             onClick={() => setDetailsOpen((v) => !v)}
-            disabled={!gender}
+            disabled={!gender || locked}
             className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-black/[0.02] transition-colors disabled:cursor-not-allowed"
           >
             <div>
@@ -169,8 +190,8 @@ const MeasurementPanel = ({ bodyMeasurements = {}, unitConversion = {} }) => {
                   {autoCalculate ? 'Calculated from height & weight' : 'Drag to adjust manually'}
                 </span>
                 <button
-                  onClick={() => gender && setAutoCalculate(!autoCalculate)}
-                  disabled={!gender}
+                  onClick={() => gender && !locked && setAutoCalculate(!autoCalculate)}
+                  disabled={!gender || locked}
                   className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] font-medium border transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
                     autoCalculate
                       ? 'bg-white text-black border-black/20 hover:border-black'
@@ -196,7 +217,7 @@ const MeasurementPanel = ({ bodyMeasurements = {}, unitConversion = {} }) => {
                   <input
                     type="range" min={min} max={max} value={value}
                     onChange={(e) => updateManual(key, Number(e.target.value))}
-                    disabled={autoCalculate || !gender}
+                    disabled={autoCalculate || !gender || locked}
                     className="w-full h-1.5 bg-black/10 rounded-full appearance-none cursor-pointer accent-black disabled:cursor-not-allowed"
                   />
                 </div>

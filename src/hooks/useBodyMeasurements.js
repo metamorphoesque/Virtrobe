@@ -132,12 +132,31 @@ export const useBodyMeasurements = (initialGender = null) => {
     shoulder_width_cm: shoulders
   };
   
+  // Proportional coupling: changing one measurement slightly adjusts its neighbours
+  // to maintain anatomically plausible proportions.
   const updateManual = (type, value) => {
     switch(type) {
-      case 'shoulders': setShoulders(value); break;
-      case 'bust': setBust(value); break;
-      case 'waist': setWaist(value); break;
-      case 'hips': setHips(value); break;
+      case 'shoulders':
+        setShoulders(value);
+        break;
+      case 'bust': {
+        const delta = value - bust;
+        setBust(value);
+        // Bust growth also slightly widens shoulders and waist
+        setShoulders(prev => Math.round(Math.max(30, Math.min(55, prev + delta * 0.30))));
+        setWaist(prev => Math.round(Math.max(55, Math.min(100, prev + delta * 0.20))));
+        break;
+      }
+      case 'waist': {
+        const delta = value - waist;
+        setWaist(value);
+        // Waist growth also slightly widens hips
+        setHips(prev => Math.round(Math.max(75, Math.min(125, prev + delta * 0.25))));
+        break;
+      }
+      case 'hips':
+        setHips(value);
+        break;
     }
   };
   

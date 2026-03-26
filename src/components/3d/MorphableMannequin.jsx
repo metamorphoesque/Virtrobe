@@ -13,6 +13,7 @@ const MorphableMannequin = forwardRef(({
 }, ref) => {
   const group = useRef();
   const meshRef = useRef();
+  const cageRef = useRef();   // ← body cage mesh (garment projection target)
   const landmarksRef = useRef({});
 
   const modelPath = measurements.gender === 'male'
@@ -64,12 +65,23 @@ const MorphableMannequin = forwardRef(({
 
   useEffect(() => {
     meshRef.current = null;
+    cageRef.current = null;
     landmarksRef.current = {};
 
     clonedScene.traverse((child) => {
-      if (child.isMesh && child.morphTargetDictionary) {
-        meshRef.current = child;
-        console.log(`✅ Found ${measurements.gender} morphable mesh:`, child.name);
+      // Main morphable mannequin mesh
+      if (child.isMesh && child.morphTargetDictionary && !child.name?.toLowerCase().includes('garment_cage')) {
+        if (!meshRef.current) {
+          meshRef.current = child;
+          console.log(`✅ Found ${measurements.gender} morphable mesh:`, child.name);
+        }
+      }
+      // Body cage mesh (garment projection target) — hidden from rendering
+      if (child.isMesh && child.name?.toLowerCase().includes('garment_cage')) {
+        cageRef.current = child;
+        child.visible = false;  // invisible in the scene
+        console.log(`🔲 Found garment cage mesh:`, child.name,
+          child.morphTargetDictionary ? `(${Object.keys(child.morphTargetDictionary).length} shape keys)` : '(no shape keys)');
       }
       if (child.name?.toLowerCase().startsWith('landmark_')) {
         landmarksRef.current[child.name] = child;
@@ -77,6 +89,7 @@ const MorphableMannequin = forwardRef(({
     });
 
     if (!meshRef.current) console.warn('⚠️ No morphable mesh found in cloned scene');
+    if (!cageRef.current) console.log('ℹ️ No garment_cage mesh found — will use mannequin mesh + ease for projection');
     if (Object.keys(landmarksRef.current).length > 0) {
       console.log('📍 Found native GLB embedded landmarks:', Object.keys(landmarksRef.current));
     }
@@ -151,6 +164,21 @@ const MorphableMannequin = forwardRef(({
     if (shoulderNorm < -0.05) setMorph('shoulders_narrow', Math.abs(shoulderNorm));
 
     mesh.morphTargetInfluences = [...influences];
+
+    // ── Sync cage mesh morph targets ────────────────────────────
+    // The cage has the same shape keys; apply identical influences
+    // so it deforms in lockstep with the mannequin.
+    if (cageRef.current?.morphTargetDictionary) {
+      const cageMesh = cageRef.current;
+      const cageDict = cageMesh.morphTargetDictionary;
+      const cageInf  = cageMesh.morphTargetInfluences;
+      for (const [name, idx] of Object.entries(dict)) {
+        if (cageDict[name] !== undefined) {
+          cageInf[cageDict[name]] = influences[idx];
+        }
+      }
+      cageMesh.morphTargetInfluences = [...cageInf];
+    }
   }, [
     measurements.height_cm, measurements.bust_cm,
     measurements.waist_cm, measurements.hips_cm,
@@ -173,9 +201,9 @@ const MorphableMannequin = forwardRef(({
 
   useEffect(() => {
     if (!ref || !group.current) return;
-    // Expose live landmark nodes — callers must call updateWorldMatrix(true)
-    // then getWorldPosition() to get correct world coords including group scale
+    // Expose live landmark nodes and cage mesh
     group.current.getLiveLandmarks = () => landmarksRef.current;
+    group.current.getCageMesh = () => cageRef.current || null;
     typeof ref === 'function' ? ref(group.current) : (ref.current = group.current);
   }, [ref]);
 

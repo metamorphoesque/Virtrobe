@@ -74,11 +74,12 @@ const MORPH_ALIASES = {
 // ─────────────────────────────────────────────
 // Base ease = garment sits this factor outside the body surface
 const DEFAULT_EASE_FACTOR = 1.08;
-// Extra ease at bust and hips where body curvature causes peeking
-const EASE_BUST_BOOST = 0.03;  // +3% at bust peak
-const EASE_HIPS_BOOST = 0.03;  // +3% at hips peak
+// Extra ease at bust/chest and hips where body curvature causes peeking
+const EASE_BUST_BOOST  = 0.07;  // +7% at bust peak
+const EASE_CHEST_BOOST = 0.05;  // +5% at chest (slightly above bust)
+const EASE_HIPS_BOOST  = 0.06;  // +6% at hips peak
 // Gaussian falloff half-width for boost zones (world units)
-const EASE_BOOST_SIGMA = 0.06;
+const EASE_BOOST_SIGMA = 0.10;
 
 // Number of Y slices and angular bins for body profile
 const PROFILE_Y_STEPS  = 48;
@@ -627,8 +628,24 @@ class GarmentFitter {
             return { anchorY: 2.0, zoneTop: 2.3, zoneBottom: 1.7 };
         }
 
+        // ── 1a. Check for body cage mesh ─────────────────────────────
+        //   If a garment_cage mesh exists in the GLB, use IT for body
+        //   profiling instead of the mannequin. The cage has the garment
+        //   clearance offset baked in from Blender, so we skip ease boosts.
+        let profileMesh = mannequinMesh;  // default: project onto mannequin
+        let useCage = false;
+        if (typeof mannequinNode?.getCageMesh === 'function') {
+            const cage = mannequinNode.getCageMesh();
+            if (cage) {
+                profileMesh = cage;
+                useCage = true;
+                console.log('   🔲 Using garment_cage mesh for body profiling (ease boosts skipped)');
+            }
+        }
+
         mannequinNode.updateMatrixWorld(true);
         mannequinMesh.updateMatrixWorld(true);
+        if (useCage) profileMesh.updateMatrixWorld(true);
 
         // ── 1b. Compute coordinate-frame transform ──────────────────
         //   The garment mesh has identity transform and sits directly
@@ -644,8 +661,8 @@ class GarmentFitter {
         //   Fix: build body profile in groupRef-local space so XZ
         //   angles match the garment's own vertex angles.
         //
-        //   toGarmentSpace = inverse(groupRef.matrixWorld) * mannequinMesh.matrixWorld
-        //   This maps:  mannequin-mesh-local → world → groupRef-local
+        //   toGarmentSpace = inverse(groupRef.matrixWorld) * profileMesh.matrixWorld
+        //   This maps:  profile-mesh-local → world → groupRef-local
         let toGarmentSpace = null;
         const parentGroup = mannequinNode.parent; // = groupRef
         if (parentGroup) {
@@ -653,8 +670,8 @@ class GarmentFitter {
             toGarmentSpace = new THREE.Matrix4()
                 .copy(parentGroup.matrixWorld)
                 .invert()
-                .multiply(mannequinMesh.matrixWorld);
-            console.log('   🔗 Body profile will be built in groupRef-local space');
+                .multiply(profileMesh.matrixWorld);
+            console.log(`   🔗 Body profile built in groupRef-local space (source: ${useCage ? 'cage' : 'mannequin'})`);
         } else {
             console.warn('   ⚠️ No parent group — falling back to world-space body profile');
         }
@@ -693,9 +710,14 @@ class GarmentFitter {
             fitBottom  = waistY;
         } else {
             zoneTop    = waistY + 0.03;   // slightly above waist
-            // Lower body stops at mannequin bottom, not floor
+            // Lower body: use knee-level for the zone bottom, NOT the mannequin
+            // foot. This prevents the garment from being stretched all the way
+            // down and intersecting legs at 90°.
             const mBox = new THREE.Box3().setFromObject(mannequinNode);
-            zoneBottom = Math.max(0.0, mBox.min.y - 0.02);
+            const mannequinBottom = Math.max(0.0, mBox.min.y);
+            // Knee is approximately 25% up from bottom
+            const kneeY = mannequinBottom + (hipsY - mannequinBottom) * 0.35;
+            zoneBottom = kneeY;
             anchorY    = waistY;
             // Fitting zone: waist to hips — below hips is free (pant legs, skirt hem)
             fitTop     = waistY;
@@ -703,17 +725,18 @@ class GarmentFitter {
         }
 
         const zoneHeight = zoneTop - zoneBottom;
-        // Blend ramp width: how many world units the blend transition takes
-        const blendWidth = zoneHeight * 0.15;
+        // Blend ramp width: wider for top (preserve necklines/collars) vs bottom
+        const blendWidthTop    = zoneHeight * 0.25; // generous for shape preservation
+        const blendWidthBottom = zoneHeight * 0.20; // wider for lower drape
         console.log(`   📐 zone: top=${zoneTop.toFixed(3)} bottom=${zoneBottom.toFixed(3)} height=${zoneHeight.toFixed(3)}`);
-        console.log(`   🎯 fit zone: top=${fitTop.toFixed(3)} bottom=${fitBottom.toFixed(3)} blendW=${blendWidth.toFixed(3)}`);
+        console.log(`   🎯 fit zone: top=${fitTop.toFixed(3)} bottom=${fitBottom.toFixed(3)} blendWTop=${blendWidthTop.toFixed(3)} blendWBot=${blendWidthBottom.toFixed(3)}`);
 
         // ── 4. Build angular body profile ───────────────────────────
         //   Built in groupRef-local space (same frame as garment vertices)
         //   so that θ angles match between body and garment.
         const profileMargin = 0.1;
         const bodyProfile = _buildAngularBodyProfile(
-            mannequinMesh,
+            profileMesh,     // ← cage mesh when available, mannequin otherwise
             zoneBottom - profileMargin,
             zoneTop + profileMargin,
             PROFILE_Y_STEPS,
@@ -745,11 +768,15 @@ class GarmentFitter {
 
         console.log(`   📊 flareRatio=${flareRatio.toFixed(2)} hasFlare=${hasFlare}`);
 
-        // ── 6b. Precompute bust/hip Y for per-vertex ease boost ──────
+        // ── 6b. Precompute bust/hip/chest Y for per-vertex ease boost ──
         // Bust is midway between shoulder and waist for upper zone
         const bustY = bodyZone === 'upper'
             ? waistY + (shoulderY - waistY) * 0.45
             : -999; // no bust boost for lower garments
+        // Chest is slightly above bust (upper pectoral region)
+        const chestY = bodyZone === 'upper'
+            ? waistY + (shoulderY - waistY) * 0.60
+            : -999;
 
         // ── 7. Per-vertex radial projection ─────────────────────────
         const garmentLocalYMin = gProfile.localYMin;
@@ -798,12 +825,22 @@ class GarmentFitter {
                 // 7f. Body radius at this (worldY, θ)
                 const bodyR = _sampleBodyProfile(bodyProfile, worldY, theta);
 
-                // 7f½. Per-vertex ease: base + Gaussian boost at bust & hips
-                const bustDist = Math.abs(worldY - bustY);
-                const hipsDist = Math.abs(worldY - hipsY);
-                const bustBoost = EASE_BUST_BOOST * Math.exp(-0.5 * (bustDist / EASE_BOOST_SIGMA) ** 2);
-                const hipsBoost = EASE_HIPS_BOOST * Math.exp(-0.5 * (hipsDist / EASE_BOOST_SIGMA) ** 2);
-                const vertexEase = easeFactor + bustBoost + hipsBoost;
+                // 7f½. Per-vertex ease:
+                //   When using cage: the cage already has clearance baked in,
+                //     so vertexEase = easeFactor only (no Gaussian boosts).
+                //   When using mannequin: add Gaussian boosts at bust/chest/hips.
+                let vertexEase;
+                if (useCage) {
+                    vertexEase = easeFactor;
+                } else {
+                    const bustDist  = Math.abs(worldY - bustY);
+                    const chestDist = Math.abs(worldY - chestY);
+                    const hipsDist  = Math.abs(worldY - hipsY);
+                    const bustBoost  = EASE_BUST_BOOST  * Math.exp(-0.5 * (bustDist  / EASE_BOOST_SIGMA) ** 2);
+                    const chestBoost = EASE_CHEST_BOOST * Math.exp(-0.5 * (chestDist / EASE_BOOST_SIGMA) ** 2);
+                    const hipsBoost  = EASE_HIPS_BOOST  * Math.exp(-0.5 * (hipsDist  / EASE_BOOST_SIGMA) ** 2);
+                    vertexEase = easeFactor + bustBoost + chestBoost + hipsBoost;
+                }
 
                 // 7g. Compute target radius
                 let targetR;
@@ -829,7 +866,13 @@ class GarmentFitter {
                 }
 
                 // 7h. Never go inside the body
-                targetR = Math.max(targetR, bodyR * 1.008);
+                // When using cage: cage IS the minimum surface (no extra floor needed)
+                // When using mannequin: generous floor to prevent peeking
+                if (useCage) {
+                    targetR = Math.max(targetR, bodyR * 1.005);
+                } else {
+                    targetR = Math.max(targetR, bodyR * 1.025);
+                }
 
                 // 7i. Compute new local position
                 // Garment mesh has identity transform (pos=0, scale=1, rot=identity)
@@ -851,15 +894,18 @@ class GarmentFitter {
                 let blend = 1.0;
 
                 if (worldY > fitTop) {
-                    // Above fitting zone (sleeves, collar for upper)
+                    // Above fitting zone (sleeves, collar, necklines for upper)
+                    // Uses wider top blend to preserve garment shape features
                     const dist = worldY - fitTop;
-                    blend = 1.0 - Math.min(1.0, dist / blendWidth);
-                    blend = blend * blend; // ease-out curve (smooth)
+                    const t = Math.min(1.0, dist / blendWidthTop);
+                    blend = 1.0 - t;
+                    blend = blend * blend * (3.0 - 2.0 * blend); // smoothstep curve
                 } else if (worldY < fitBottom) {
                     // Below fitting zone (pant legs, skirt hem for lower)
                     const dist = fitBottom - worldY;
-                    blend = 1.0 - Math.min(1.0, dist / blendWidth);
-                    blend = blend * blend;
+                    const t = Math.min(1.0, dist / blendWidthBottom);
+                    blend = 1.0 - t;
+                    blend = blend * blend * (3.0 - 2.0 * blend); // smoothstep curve
                 }
 
                 let newX, newY, newZ;
