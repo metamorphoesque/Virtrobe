@@ -28,8 +28,6 @@ const MorphableMannequin = forwardRef(({
     console.log('✅ Mannequin scene cloned');
 
     // ── SCALE DIAGNOSTIC ─────────────────────────────────────────────────
-    // Fires once per clone. Tells us the GLB's native unit scale BEFORE
-    // the group scale={0.5} shrinks everything in world space.
     setTimeout(() => {
       clone.updateMatrixWorld(true);
       const box = new THREE.Box3().setFromObject(clone);
@@ -52,7 +50,6 @@ const MorphableMannequin = forwardRef(({
       });
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     }, 500);
-    // ─────────────────────────────────────────────────────────────────────
 
     return clone;
   }, [scene, measurements.gender]);
@@ -79,7 +76,7 @@ const MorphableMannequin = forwardRef(({
       // Body cage mesh (garment projection target) — hidden from rendering
       if (child.isMesh && child.name?.toLowerCase().includes('garment_cage')) {
         cageRef.current = child;
-        child.visible = false;  // invisible in the scene
+        child.visible = false;
         console.log(`🔲 Found garment cage mesh:`, child.name,
           child.morphTargetDictionary ? `(${Object.keys(child.morphTargetDictionary).length} shape keys)` : '(no shape keys)');
       }
@@ -166,8 +163,6 @@ const MorphableMannequin = forwardRef(({
     mesh.morphTargetInfluences = [...influences];
 
     // ── Sync cage mesh morph targets ────────────────────────────
-    // The cage has the same shape keys; apply identical influences
-    // so it deforms in lockstep with the mannequin.
     if (cageRef.current?.morphTargetDictionary) {
       const cageMesh = cageRef.current;
       const cageDict = cageMesh.morphTargetDictionary;
@@ -189,9 +184,6 @@ const MorphableMannequin = forwardRef(({
     if (autoRotate && group.current) group.current.rotation.y += delta * 0.3;
   });
 
-  // When auto-rotation stops (garment is selected), reset the internal
-  // group rotation to 0 so there's no stale rotation offset. The parent
-  // <group ref={groupRef}> in Scene.jsx handles all intentional rotation.
   useEffect(() => {
     if (!autoRotate && group.current) {
       group.current.rotation.y = 0;
@@ -199,13 +191,16 @@ const MorphableMannequin = forwardRef(({
     }
   }, [autoRotate]);
 
+  // ── FIX: added clonedScene to deps so getCageMesh is exposed AFTER
+  //    the traversal that populates cageRef has run. Without this,
+  //    getCageMesh() returns null and the fitter falls back to the
+  //    mannequin mesh instead of the cage.
   useEffect(() => {
     if (!ref || !group.current) return;
-    // Expose live landmark nodes and cage mesh
     group.current.getLiveLandmarks = () => landmarksRef.current;
     group.current.getCageMesh = () => cageRef.current || null;
     typeof ref === 'function' ? ref(group.current) : (ref.current = group.current);
-  }, [ref]);
+  }, [ref, clonedScene]); // ← clonedScene added here
 
   return (
     <group ref={group} position={[0, standHeight, 0]} scale={0.5}>

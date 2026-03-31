@@ -51,6 +51,12 @@ const GarmentMesh = ({ modelUrl, garmentData, mannequinRef, measurements, easeFa
             }
         });
 
+        // ▸ Lower-body orientation fix: pants/skirts modeled lying flat
+        //   need to be rotated upright BEFORE any other processing.
+        if (bodyZone === 'lower') {
+            GarmentFitter.preRotateLowerBody(mesh);
+        }
+
         // ▸ Detect the garment's front face and rotate geometry so it
         //   aligns with the mannequin's front (+Z). Must happen BEFORE
         //   centrePivot and storeOriginalGeometry.
@@ -59,7 +65,7 @@ const GarmentMesh = ({ modelUrl, garmentData, mannequinRef, measurements, easeFa
         GarmentFitter.storeOriginalGeometry(mesh);
         return mesh;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [gltf, garmentData.name, garmentData.type, garmentData.modelUrl]);
+    }, [gltf, garmentData.name, garmentData.type, garmentData.modelUrl, bodyZone]);
 
     // Stage 2: Full refit — radial body projection
     const fitted = useMemo(() => {
@@ -86,8 +92,9 @@ const GarmentMesh = ({ modelUrl, garmentData, mannequinRef, measurements, easeFa
         // 2. RADIAL BODY PROJECTION — the main fitting step
         //    Vertices are reprojected directly onto the body surface + ease.
         //    easeFactor controls how tight/loose the garment fits.
+        //    garmentData passed so projectOntoBody can tune convexity by type.
         const result = GarmentFitter.projectOntoBody(
-            mesh, mannequinNode, measurements, bodyZone, ease
+            mesh, mannequinNode, measurements, bodyZone, ease, garmentData
         );
 
         // 3. No positioning needed — projectOntoBody writes vertex Y as the
@@ -113,10 +120,6 @@ const GarmentMesh = ({ modelUrl, garmentData, mannequinRef, measurements, easeFa
         measurements?.shoulder_width_cm,
         measurements?.bmi,
     ]);
-
-    // NOTE: No useFrame rotation sync needed.
-    // The garment is a child of the same <group> as the mannequin in Scene.jsx,
-    // so it inherits the parent group's rotation automatically.
 
     if (!fitted) return null;
     return <primitive ref={meshRef} object={fitted.mesh} />;
